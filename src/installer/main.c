@@ -36,7 +36,7 @@ int install_lainux(DiskInfo *disk) {
     if (format_and_mount(disk->name) != 0) {
         result = 2;
         goto cleanup;
-    }
+    } // 
 
     // Step 3: Install base Arch Linux system
     show_progress("Installing base system...", 3, 8);
