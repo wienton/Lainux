@@ -1,0 +1,6 @@
+NAME=Lainux
+ID=lainux
+PRETTY_NAME="Lainux OS"
+ID_LIKE=arch
+ANSI_COLOR="0;35"
+HOME_URL="https://github.com/wienton/Lainux"
