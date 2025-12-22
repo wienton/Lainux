@@ -53,4 +53,4 @@ Lainux is distributed under the [GNU General Public License v3.0](https://www.gn
 ---
 
 ### About the Author
-**wienton** is a dedicated system programmer with a profound interest in operating system internals, low-level programming, and hardware-software interaction. Lainux represents a personal and professional endeavor to craft a Linux distribution that embodies precision, efficiency, and full tra
+**wienton** is a dedicated system programmer with a profound interest in operating system internals, low-level programming, and hardware-software interaction. Lainux represents a personal and professional endeavor to craft a Linux distribution that embodies precision, efficiency, and full trasparency from the ground up.
