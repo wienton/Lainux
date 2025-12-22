@@ -8,13 +8,13 @@
 
 WINDOW *log_win;
 
-// Функция для отрисовки лога прямо в интерфейс
+
 void log_out(const char *text) {
     wprintw(log_win, " > %s\n", text);
     wrefresh(log_win);
 }
 
-// Запуск команды с выводом в UI
+// start command with ui
 int run_cmd(const char *cmd) {
     char buf[256];
     FILE *fp = popen(cmd, "r");
@@ -25,7 +25,7 @@ int run_cmd(const char *cmd) {
     return pclose(fp);
 }
 
-// Выбор диска
+// select disk
 void get_disks(char *target) {
     FILE *fp = popen("lsblk -dno NAME,SIZE", "r");
     char disks[10][64];
@@ -55,8 +55,7 @@ void get_disks(char *target) {
 void start_installation(const char *disk) {
     int my, mx;
     getmaxyx(stdscr, my, mx);
-    
-    // Окно логов
+    // window logo
     log_win = newwin(my-15, mx-10, 12, 5);
     scrollok(log_win, TRUE);
     box(log_win, 0, 0);
@@ -66,7 +65,6 @@ void start_installation(const char *disk) {
 
     log_out("INITIALIZING LAINUX ENGINE...");
     
-    // Проверка окружения (универсальность)
     run_cmd("command -v pacstrap || (apt-get update && apt-get install -y arch-install-scripts)");
 
     log_out("PARTITIONING DISK...");
@@ -115,15 +113,19 @@ int main() {
     while(1) {
         clear();
         attron(COLOR_PAIR(1) | A_BOLD);
-        mvprintw(2, 10, "██╗      █████╗ ██╗███╗   ██╗██╗   ██╗██╗  ██╗");
-        mvprintw(3, 10, "██║     ██╔══██╗██║████╗  ██║██║   ██║╚██╗██╔╝");
-        mvprintw(4, 10, "██║     ███████║██║██╔██╗ ██║██║   ██║ ╚███╔╝ ");
-        mvprintw(5, 10, "██║     ██╔══██║██║██║╚██╗██║██║   ██║ ██╔██╗ ");
-        mvprintw(6, 10, "███████╗██║  ██║██║██║ ╚████║╚██████╔╝██╔╝ ██╗");
-        mvprintw(7, 10, "╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝");
+
+        mvprintw(2, 10, "    _           _       __     _  _      _  _      _  _   ");
+        mvprintw(3, 10, "   FJ          /.\\      FJ    F L L]    FJ  L]    FJ  LJ  ");
+        mvprintw(4, 10, "  J |         //_\\\\    J  L  J   \\| L  J |  | L   J \\/ F  ");
+        mvprintw(5, 10, "  | |        / ___ \\   |  |  | |\\   |  | |  | |   /    \\  ");
+        mvprintw(6, 10, "  F L_____  / L___J \\  F  J  F L\\\\  J  F L__J J  /  /\\  \\ ");
+        mvprintw(7, 10, " J________LJ__L   J__LJ____LJ__L \\\\__LJ\\______/FJ__//\\\\__L");
+        mvprintw(8, 10, " |________||__L   J__||____||__L  J__| J______F |__/  \\__|");
+
         attroff(COLOR_PAIR(1) | A_BOLD);
 
-        mvprintw(9, 10, "OS: Lainux | Layer: Hardened | Build: v0.4-TITANIUM");
+
+        mvprintw(10, 10, "OS: Lainux | Layer: Hardened | Build: v0.4-BETA");
 
         for(int i=0; i<3; i++) {
             if(i == sel) attron(A_REVERSE | COLOR_PAIR(2));
