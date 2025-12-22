@@ -1,132 +1,145 @@
 #include <ncurses.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
-#include <dirent.h>
 #include <unistd.h>
 
-#define VERSION "v0.3-BETA"
 #define CORE_URL "https://github.com/wienton/Lainux/raw/main/lainux-core-0.1-1-x86_64.pkg.tar.zst"
 
-void setup_colors() {
-    start_color();
-    init_pair(1, COLOR_MAGENTA, COLOR_BLACK); // Title
-    init_pair(2, COLOR_CYAN, COLOR_BLACK);    // Accents
-    init_pair(3, COLOR_GREEN, COLOR_BLACK);   // Success
-    init_pair(4, COLOR_RED, COLOR_BLACK);     // Error
-    init_pair(5, COLOR_BLACK, COLOR_WHITE);   // Selection
+WINDOW *log_win;
+
+// Функция для отрисовки лога прямо в интерфейс
+void log_out(const char *text) {
+    wprintw(log_win, " > %s\n", text);
+    wrefresh(log_win);
 }
 
-// Красивая рамка с тенью
-void draw_interface() {
+// Запуск команды с выводом в UI
+int run_cmd(const char *cmd) {
+    char buf[256];
+    FILE *fp = popen(cmd, "r");
+    if (!fp) return -1;
+    while (fgets(buf, sizeof(buf), fp)) {
+        log_out(buf);
+    }
+    return pclose(fp);
+}
+
+// Выбор диска
+void get_disks(char *target) {
+    FILE *fp = popen("lsblk -dno NAME,SIZE", "r");
+    char disks[10][64];
+    int count = 0;
+    while (fgets(disks[count], 64, fp) && count < 10) count++;
+    pclose(fp);
+
+    int sel = 0;
+    while(1) {
+        clear();
+        mvprintw(2, 5, "SELECT TARGET STORAGE DEVICE:");
+        for(int i=0; i<count; i++) {
+            if(i == sel) attron(A_REVERSE | COLOR_PAIR(2));
+            mvprintw(4+i, 7, " %s ", disks[i]);
+            attroff(A_REVERSE | COLOR_PAIR(2));
+        }
+        int ch = getch();
+        if(ch == KEY_UP) sel = (sel + count - 1) % count;
+        if(ch == KEY_DOWN) sel = (sel + 1) % count;
+        if(ch == 10) {
+            sscanf(disks[sel], "%s", target);
+            return;
+        }
+    }
+}
+
+void start_installation(const char *disk) {
     int my, mx;
     getmaxyx(stdscr, my, mx);
     
-    // Тень
-    attron(COLOR_PAIR(0));
-    for(int i=0; i<my-2; i++) mvaddch(4+i, mx/2+31, ' ' | A_REVERSE);
-    for(int i=0; i<62; i++) mvaddch(my/2+6, mx/2-29+i, ' ' | A_REVERSE);
+    // Окно логов
+    log_win = newwin(my-15, mx-10, 12, 5);
+    scrollok(log_win, TRUE);
+    box(log_win, 0, 0);
+    wrefresh(log_win);
 
-    // Главное окно
-    attron(COLOR_PAIR(2));
-    move(3, mx/2-30); 
-    hline(ACS_HLINE, 60);
-    vline(ACS_VLINE, 20);
-    move(23, mx/2-30); 
-    hline(ACS_HLINE, 60);
-    move(3, mx/2+30);
-    vline(ACS_VLINE, 20);
-    mvaddch(3, mx/2-30, ACS_ULCORNER);
-    mvaddch(3, mx/2+30, ACS_URCORNER);
-    mvaddch(23, mx/2-30, ACS_LLCORNER);
-    mvaddch(23, mx/2+30, ACS_LRCORNER);
-}
-
-int exec(const char *step, const char *cmd) {
-    endwin();
-    printf("\033[1;35m[LAINUX-ENGINE]\033[0m %s...\n\033[0;32m%s\033[0m\n", step, cmd);
-    int r = system(cmd);
-    initscr();
-    return (r == 0);
-}
-
-void auto_install() {
-    char disk[32] = "sda"; // Можно добавить выбор через меню
     char cmd[1024];
 
-    // Шаг 0: Универсальность (Подтягиваем тулзы если их нет)
-    exec("Preparing Environment", "apt-get update && apt-get install -y arch-install-scripts || pacman -S --noconfirm arch-install-scripts || echo 'Assuming tools exist'");
-
-    // Шаг 1: Диск
-    sprintf(cmd, "sgdisk --zap-all /dev/%s && echo 'label: gpt\nsize=512M, type=ef00\nsize=+, type=8304' | sfdisk /dev/%s", disk, disk);
-    if(!exec("Deep Partitioning", cmd)) return;
-
-    // Шаг 2: ФС
-    sprintf(cmd, "mkfs.fat -F32 /dev/%s1 && mkfs.ext4 -F /dev/%s2", disk, disk);
-    exec("Formatting", cmd);
-
-    // Шаг 3: Монтирование
-    sprintf(cmd, "mount /dev/%s2 /mnt && mkdir -p /mnt/boot && mount /dev/%s1 /mnt/boot", disk, disk);
-    exec("Mounting Filesystems", cmd);
-
-    // Шаг 4: Развертывание (Используем зеркала)
-    exec("Deploying Base", "pacstrap /mnt base linux-hardened linux-firmware base-devel wget grub efibootmgr");
-
-    // Шаг 5: Облачный десант Lainux-Core
-    sprintf(cmd, "wget -qO /mnt/root/core.tar.zst %s && arch-chroot /mnt pacman -U /root/core.tar.zst --noconfirm", CORE_URL);
-    exec("Downloading & Injecting Core", cmd);
-
-    // Шаг 6: GRUB
-    exec("Bootloader Config", "arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot && arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg");
-
-    exec("Finalizing", "umount -R /mnt");
+    log_out("INITIALIZING LAINUX ENGINE...");
     
-    mvprintw(15, COLS/2-10, "SUCCESS! UNPLUG USB & REBOOT.");
-    refresh();
+    // Проверка окружения (универсальность)
+    run_cmd("command -v pacstrap || (apt-get update && apt-get install -y arch-install-scripts)");
+
+    log_out("PARTITIONING DISK...");
+    sprintf(cmd, "sgdisk --zap-all /dev/%s && echo 'label: gpt\nsize=512M, type=ef00\nsize=+, type=8304' | sfdisk /dev/%s", disk, disk);
+    run_cmd(cmd);
+
+    log_out("FORMATTING FILESYSTEMS...");
+    sprintf(cmd, "mkfs.fat -F32 /dev/%s1 && mkfs.ext4 -F /dev/%s2", disk, disk);
+    run_cmd(cmd);
+
+    log_out("MOUNTING...");
+    sprintf(cmd, "mount /dev/%s2 /mnt && mkdir -p /mnt/boot && mount /dev/%s1 /mnt/boot", disk, disk);
+    run_cmd(cmd);
+
+    log_out("INSTALLING BASE (STAY CONNECTED)...");
+    run_cmd("pacstrap /mnt base linux-hardened linux-firmware base-devel wget grub efibootmgr");
+
+    log_out("INJECTING LAINUX CORE CONTENT...");
+    sprintf(cmd, "wget -qO /mnt/root/core.pkg.tar.zst %s && arch-chroot /mnt pacman -U /root/core.pkg.tar.zst --noconfirm", CORE_URL);
+    run_cmd(cmd);
+
+    log_out("FINALIZING BOOTLOADER...");
+    run_cmd("arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot && arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg");
+
+    log_out("SUCCESS. UNMOUNTING...");
+    run_cmd("umount -R /mnt");
+    
+    mvprintw(my-2, 5, "INSTALLATION FINISHED. PRESS ANY KEY TO REBOOT.");
     getch();
 }
 
 int main() {
     initscr();
-    setup_colors();
+    start_color();
     noecho();
-    curs_set(0);
     keypad(stdscr, TRUE);
+    curs_set(0);
 
-    char*menu[] = {"[ 1. TURBO DEPLOY ]", "[ 2. NETWORK CONFIGURE ]", "[ 3. ABOUT SYSTEM ]", "[ 4. TERMINATE ]"};
+    init_pair(1, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair(2, COLOR_CYAN, COLOR_BLACK);
+
+    char disk[32];
     int sel = 0;
+    char *menu[] = {"[ START TURBO INSTALL ]", "[ SYSTEM INFORMATION ]", "[ EXIT ]"};
 
     while(1) {
         clear();
-        draw_interface();
-        
         attron(COLOR_PAIR(1) | A_BOLD);
-        mvprintw(5, COLS/2-22, " _        _  ___ _   _ _   _ _  __");
-        mvprintw(6, COLS/2-22, "| |      / \\|_ _| \\ | | | | \\ \\/ /");
-        mvprintw(7, COLS/2-22, "| |     / _ \\ | |  \\| | | | |\\  / ");
-        mvprintw(8, COLS/2-22, "| |___ / ___ \\| | |\\  | |_| |/  \\ ");
-        mvprintw(9, COLS/2-22, "|_____/_/   \\_\\___|_| \\_|\\___//_/\\_\\ %s", VERSION);
+        mvprintw(2, 10, "██╗      █████╗ ██╗███╗   ██╗██╗   ██╗██╗  ██╗");
+        mvprintw(3, 10, "██║     ██╔══██╗██║████╗  ██║██║   ██║╚██╗██╔╝");
+        mvprintw(4, 10, "██║     ███████║██║██╔██╗ ██║██║   ██║ ╚███╔╝ ");
+        mvprintw(5, 10, "██║     ██╔══██║██║██║╚██╗██║██║   ██║ ██╔██╗ ");
+        mvprintw(6, 10, "███████╗██║  ██║██║██║ ╚████║╚██████╔╝██╔╝ ██╗");
+        mvprintw(7, 10, "╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝");
         attroff(COLOR_PAIR(1) | A_BOLD);
 
-        attron(COLOR_PAIR(2));
-        mvprintw(11, COLS/2-15, "Automated Developer Platform");
-        attroff(COLOR_PAIR(2));
+        mvprintw(9, 10, "OS: Lainux | Layer: Hardened | Build: v0.4-TITANIUM");
 
-        for(int i=0; i<4; i++) {
-            if(i == sel) {
-                attron(COLOR_PAIR(5));
-                mvprintw(14+i*2, COLS/2-12, "%s", menu[i]);
-                attroff(COLOR_PAIR(5));
-            } else {
-                mvprintw(14+i*2, COLS/2-12, "%s", menu[i]);
-            }
+        for(int i=0; i<3; i++) {
+            if(i == sel) attron(A_REVERSE | COLOR_PAIR(2));
+            mvprintw(12+i*2, 15, "%s", menu[i]);
+            attroff(A_REVERSE | COLOR_PAIR(2));
         }
 
         int ch = getch();
-        if(ch == KEY_UP) sel = (sel + 3) % 4;
-        else if(ch == KEY_DOWN) sel = (sel + 1) % 4;
-        else if(ch == 10) {
-            if(sel == 0) auto_install();
-            if(sel == 3) break;
+        if(ch == KEY_UP) sel = (sel + 2) % 3;
+        if(ch == KEY_DOWN) sel = (sel + 1) % 3;
+        if(ch == 10) {
+            if(sel == 0) {
+                get_disks(disk);
+                start_installation(disk);
+            }
+            if(sel == 2) break;
         }
     }
 
