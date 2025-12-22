@@ -1,152 +1,135 @@
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 #include <unistd.h>
 
-// Функция для выполнения системных команд с проверкой
-void execute_step(const char *msg, const char *command) {
-    endwin(); // Временно выходим из ncurses, чтобы видеть лог команды
-    printf("\n[LAINUX STEP] %s...\n", msg);
-    printf("Running: %s\n", command);
+#define VERSION "v0.3-BETA"
+#define CORE_URL "https://github.com/wienton/Lainux/raw/main/lainux-core-0.1-1-x86_64.pkg.tar.zst"
+
+void setup_colors() {
+    start_color();
+    init_pair(1, COLOR_MAGENTA, COLOR_BLACK); // Title
+    init_pair(2, COLOR_CYAN, COLOR_BLACK);    // Accents
+    init_pair(3, COLOR_GREEN, COLOR_BLACK);   // Success
+    init_pair(4, COLOR_RED, COLOR_BLACK);     // Error
+    init_pair(5, COLOR_BLACK, COLOR_WHITE);   // Selection
+}
+
+// Красивая рамка с тенью
+void draw_interface() {
+    int my, mx;
+    getmaxyx(stdscr, my, mx);
     
-    int res = system(command);
-    if (res != 0) {
-        printf("\n[!] ERROR: Command failed. Press Enter to exit.");
-        getchar();
-        exit(1);
-    }
-    initscr(); // Возвращаемся в ncurses
+    // Тень
+    attron(COLOR_PAIR(0));
+    for(int i=0; i<my-2; i++) mvaddch(4+i, mx/2+31, ' ' | A_REVERSE);
+    for(int i=0; i<62; i++) mvaddch(my/2+6, mx/2-29+i, ' ' | A_REVERSE);
+
+    // Главное окно
+    attron(COLOR_PAIR(2));
+    move(3, mx/2-30); 
+    hline(ACS_HLINE, 60);
+    vline(ACS_VLINE, 20);
+    move(23, mx/2-30); 
+    hline(ACS_HLINE, 60);
+    move(3, mx/2+30);
+    vline(ACS_VLINE, 20);
+    mvaddch(3, mx/2-30, ACS_ULCORNER);
+    mvaddch(3, mx/2+30, ACS_URCORNER);
+    mvaddch(23, mx/2-30, ACS_LLCORNER);
+    mvaddch(23, mx/2+30, ACS_LRCORNER);
 }
 
-// Логика установки
-void install_logic(const char *target_disk) {
+int exec(const char *step, const char *cmd) {
+    endwin();
+    printf("\033[1;35m[LAINUX-ENGINE]\033[0m %s...\n\033[0;32m%s\033[0m\n", step, cmd);
+    int r = system(cmd);
+    initscr();
+    return (r == 0);
+}
+
+void auto_install() {
+    char disk[32] = "sda"; // Можно добавить выбор через меню
     char cmd[1024];
-    const char *pkg_url = "https://github.com/wienton/Lainux/raw/main/lainux-core-0.1-1-x86_64.pkg.tar.zst";
-    const char *pkg_name = "lainux-core-0.1-1-x86_64.pkg.tar.zst";
 
-    // 1. Проверка интернета
-    execute_step("Checking network", "ping -c 1 github.com");
+    // Шаг 0: Универсальность (Подтягиваем тулзы если их нет)
+    exec("Preparing Environment", "apt-get update && apt-get install -y arch-install-scripts || pacman -S --noconfirm arch-install-scripts || echo 'Assuming tools exist'");
 
-    // 2. Подготовка диска (GPA, 512MB Boot, All Root)
-    sprintf(cmd, "sgdisk --zap-all /dev/%s", target_disk);
-    execute_step("Cleaning disk", cmd);
+    // Шаг 1: Диск
+    sprintf(cmd, "sgdisk --zap-all /dev/%s && echo 'label: gpt\nsize=512M, type=ef00\nsize=+, type=8304' | sfdisk /dev/%s", disk, disk);
+    if(!exec("Deep Partitioning", cmd)) return;
 
-    sprintf(cmd, "echo 'label: gpt\nsize=512M, type=ef00\nsize=+, type=8304' | sfdisk /dev/%s", target_disk);
-    execute_step("Partitioning", cmd);
+    // Шаг 2: ФС
+    sprintf(cmd, "mkfs.fat -F32 /dev/%s1 && mkfs.ext4 -F /dev/%s2", disk, disk);
+    exec("Formatting", cmd);
 
-    // 3. Форматирование (Проверяем тип диска для именования разделов)
-    // Для NVMe это p1, для SDA это 1. Упростим до sda для теста.
-    sprintf(cmd, "mkfs.fat -F32 /dev/%s1", target_disk); 
-    execute_step("Formatting Boot (EFI)", cmd);
-    sprintf(cmd, "mkfs.ext4 -F /dev/%s2", target_disk);
-    execute_step("Formatting Root", cmd);
+    // Шаг 3: Монтирование
+    sprintf(cmd, "mount /dev/%s2 /mnt && mkdir -p /mnt/boot && mount /dev/%s1 /mnt/boot", disk, disk);
+    exec("Mounting Filesystems", cmd);
 
-    // 4. Монтирование
-    sprintf(cmd, "mount /dev/%s2 /mnt", target_disk);
-    execute_step("Mounting Root", cmd);
-    execute_step("Creating Boot dir", "mkdir -p /mnt/boot");
-    sprintf(cmd, "mount /dev/%s1 /mnt/boot", target_disk);
-    execute_step("Mounting Boot", cmd);
+    // Шаг 4: Развертывание (Используем зеркала)
+    exec("Deploying Base", "pacstrap /mnt base linux-hardened linux-firmware base-devel wget grub efibootmgr");
 
-    // 5. Установка базы через pacstrap
-    execute_step("Installing Base (Arch Hardened)", "pacstrap /mnt base linux-hardened linux-firmware base-devel nasm gcc wget grub efibootmgr");
+    // Шаг 5: Облачный десант Lainux-Core
+    sprintf(cmd, "wget -qO /mnt/root/core.tar.zst %s && arch-chroot /mnt pacman -U /root/core.tar.zst --noconfirm", CORE_URL);
+    exec("Downloading & Injecting Core", cmd);
 
-    // 6. Генерация FSTAB
-    execute_step("Generating FSTAB", "genfstab -U /mnt >> /mnt/etc/fstab");
+    // Шаг 6: GRUB
+    exec("Bootloader Config", "arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot && arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg");
 
-    // 7. СКАЧИВАНИЕ И УСТАНОВКА LAINUX-CORE
-    sprintf(cmd, "wget -O /mnt/root/%s %s", pkg_name, pkg_url);
-    execute_step("Downloading Lainux-Core from GitHub", cmd);
-
-    sprintf(cmd, "arch-chroot /mnt pacman -U /root/%s --noconfirm", pkg_name);
-    execute_step("Installing Lainux-Core package", cmd);
-
-    // 8. Настройка загрузчика
-    execute_step("Installing GRUB", "arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=LAINUX");
-    execute_step("Configuring GRUB", "arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg");
-
-    // 9. Финиш
-    execute_step("Unmounting", "umount -R /mnt");
-}
-
-void show_info() {
-    clear();
-    attron(COLOR_PAIR(1) | A_BOLD);
-    mvprintw(2, 5, "=== LAINUX PROJECT INFO ===");
-    attroff(COLOR_PAIR(1) | A_BOLD);
-    mvprintw(4, 5, "Platform for system developers and security experts.");
-    mvprintw(5, 5, "Philosophy: Deep control, minimal noise.");
-    mvprintw(7, 5, "Developer: wienton");
-    mvprintw(8, 5, "GitHub: github.com/wienton/Lainux");
-    mvprintw(10, 5, "Press any key to go back...");
+    exec("Finalizing", "umount -R /mnt");
+    
+    mvprintw(15, COLS/2-10, "SUCCESS! UNPLUG USB & REBOOT.");
     refresh();
     getch();
 }
 
-void run_install_menu() {
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-    WINDOW *win = newwin(12, 60, max_y/2 - 6, max_x/2 - 30);
-    box(win, 0, 0);
-    
-    mvwprintw(win, 2, 5, "        TURBO INSTALLATION MODE");
-    mvwprintw(win, 4, 5, "Target disk: /dev/sda");
-    mvwprintw(win, 5, 5, "Packages: Base + Linux-Hardened + Lainux-Core");
-    mvwprintw(win, 7, 5, "WARNING: This will wipe all data on /dev/sda!");
-    mvwprintw(win, 9, 5, "Press [ENTER] to confirm or [ESC] to exit.");
-    wrefresh(win);
-
-    int ch = wgetch(win);
-    if (ch == 10) { // ENTERinstall_logic("sda");
-        clear();
-        mvprintw(max_y/2, max_x/2 - 15, "INSTALLATION COMPLETE! REBOOT NOW.");
-        refresh();
-        getch();
-    }
-    delwin(win);
-}
-
 int main() {
     initscr();
-    start_color();
+    setup_colors();
     noecho();
     curs_set(0);
     keypad(stdscr, TRUE);
 
-    init_pair(1, COLOR_MAGENTA, COLOR_BLACK);
-    init_pair(2, COLOR_CYAN, COLOR_BLACK);
-
-    int choice;
-    int highlight = 0;
-    char *choices[] = {"1. Turbo Install (/dev/sda)", "2. Custom Setup (WIP)", "3. What is Lainux?", "4. Exit"};
-    int n_choices = 4;
+    char*menu[] = {"[ 1. TURBO DEPLOY ]", "[ 2. NETWORK CONFIGURE ]", "[ 3. ABOUT SYSTEM ]", "[ 4. TERMINATE ]"};
+    int sel = 0;
 
     while(1) {
         clear();
+        draw_interface();
+        
         attron(COLOR_PAIR(1) | A_BOLD);
-        mvprintw(1, 10, " _       LAINUX SYSTEM INSTALLER       _ ");
-        mvprintw(2, 10, "| |    Everything is connected...      | |");
-        mvprintw(3, 10, "| |____________________________________| |");
+        mvprintw(5, COLS/2-22, " _        _  ___ _   _ _   _ _  __");
+        mvprintw(6, COLS/2-22, "| |      / \\|_ _| \\ | | | | \\ \\/ /");
+        mvprintw(7, COLS/2-22, "| |     / _ \\ | |  \\| | | | |\\  / ");
+        mvprintw(8, COLS/2-22, "| |___ / ___ \\| | |\\  | |_| |/  \\ ");
+        mvprintw(9, COLS/2-22, "|_____/_/   \\_\\___|_| \\_|\\___//_/\\_\\ %s", VERSION);
         attroff(COLOR_PAIR(1) | A_BOLD);
 
-        for(int i = 0; i < n_choices; i++) {
-            if(i == highlight) attron(A_REVERSE | COLOR_PAIR(2));
-            mvprintw(i + 8, 15, "%s", choices[i]);
-            attroff(A_REVERSE | COLOR_PAIR(2));
-        }
-        refresh();
+        attron(COLOR_PAIR(2));
+        mvprintw(11, COLS/2-15, "Automated Developer Platform");
+        attroff(COLOR_PAIR(2));
 
-        choice = getch();
-        switch(choice) {
-            case KEY_UP: highlight = (highlight == 0) ? n_choices - 1 : highlight - 1; break;
-            case KEY_DOWN: highlight = (highlight == n_choices - 1) ? 0 : highlight + 1; break;
-            case 10:
-                if(highlight == 0) run_install_menu();
-                if(highlight == 2) show_info();
-                if(highlight == 3) { endwin(); return 0; }
-                break;
+        for(int i=0; i<4; i++) {
+            if(i == sel) {
+                attron(COLOR_PAIR(5));
+                mvprintw(14+i*2, COLS/2-12, "%s", menu[i]);
+                attroff(COLOR_PAIR(5));
+            } else {
+                mvprintw(14+i*2, COLS/2-12, "%s", menu[i]);
+            }
+        }
+
+        int ch = getch();
+        if(ch == KEY_UP) sel = (sel + 3) % 4;
+        else if(ch == KEY_DOWN) sel = (sel + 1) % 4;
+        else if(ch == 10) {
+            if(sel == 0) auto_install();
+            if(sel == 3) break;
         }
     }
+
     endwin();
     return 0;
 }
