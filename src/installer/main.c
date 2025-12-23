@@ -1,3 +1,9 @@
+/*
+    * general file with start installer TUI programm
+    * @version v0.1 BETA
+    * @authors Wienton Low-Level Developer and Reverse Engineer, Lainux Development Lab
+*/
+
 #include <ncurses.h>
 #include <signal.h>
 #include <stdlib.h>

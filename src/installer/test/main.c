@@ -1,3 +1,8 @@
+/**
+ * @brief Official Working Version Lainux Installer, but right now only arch linux(kernel) install.
+ * @details https://github.com/wienton/Lainux/raw/main/lainux-core-0.1-1-x86_64.pkg.tar.zst download from here
+ */
+
 #include <ncurses.h>
 #include <stdlib.h>
 #include <stdio.h>
