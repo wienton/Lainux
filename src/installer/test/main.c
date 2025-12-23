@@ -130,7 +130,7 @@ int main() {
         attroff(COLOR_PAIR(1) | A_BOLD);
 
 
-        mvprintw(10, 10, "OS: Lainux | Layer: Hardened | Build: v0.4-BETA");
+        mvprintw(10, 10, "OS: Lainux | Layer: Hardened | Build: 1.0 Release");
 
         for(int i=0; i<3; i++) {
             if(i == sel) attron(A_REVERSE | COLOR_PAIR(2));
