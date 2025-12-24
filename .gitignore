@@ -1,1 +1,1 @@
-echo "build/archiso/*.iso" >> .gitignore
+build/archiso/*.iso
