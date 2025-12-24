@@ -5,6 +5,15 @@
 * @license: GPL-3.0
 * @details contact with general developer LainuxOS and this installer you can from telegram @openrtc
 * @status: STATUS WORK **TRUE**
+
+* @update:
+* * feat: center-align all UI elements including logo, menu, and footer
+
+    Dynamically calculate terminal width to center logo, version info, time, and navigation hints
+    Implement automatic menu alignment based on the longest item width
+    Display compiler version (GCC) in footer using __VERSION__
+    Ensure consistent and responsive layout across different terminal sizes
+
 */
 
 #include <ncurses.h>
@@ -28,6 +37,8 @@
 #include <curl/curl.h>
 #include <ctype.h>
 
+#include "../utils/network_connection/network_sniffer.h"
+#include "../utils/network_connection/network_state.h"
 // Configuration
 #define CORE_URL "https://github.com/wienton/Lainux/raw/main/lainux-core-0.1-1-x86_64.pkg.tar.zst"
 #define FALLBACK_CORE_URL "https://mirror.lainux.org/core/lainux-core-0.1-1-x86_64.pkg.tar.zst"
@@ -1635,30 +1646,35 @@ void select_configuration() {
 
 // Show Lainux logo with enhanced design
 void show_logo() {
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+    int start_x = (max_x - 62) / 2; // длина самой длинной строки логотипа
+
     attron(A_BOLD | COLOR_PAIR(1));
-
-    // ASCII art logo with borders
-    mvprintw(1, 20, "╔══════════════════════════════════════════════════════════════╗");
-    mvprintw(2, 20, "║                                                              ║");
-    mvprintw(3, 20, "║      ██╗      █████╗ ██╗███╗   ██╗██╗   ██╗██╗  ██╗          ║");
-    mvprintw(4, 20, "║      ██║     ██╔══██╗██║████╗  ██║██║   ██║╚██╗██╔╝          ║");
-    mvprintw(5, 20, "║      ██║     ███████║██║██╔██╗ ██║██║   ██║ ╚███╔╝           ║");
-    mvprintw(6, 20, "║      ██║     ██╔══██║██║██║╚██╗██║██║   ██║ ██╔██╗           ║");
-    mvprintw(7, 20, "║      ███████╗██║  ██║██║██║ ╚████║╚██████╔╝██╔╝ ██╗          ║");
-    mvprintw(8, 20, "║      ╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝          ║");
-    mvprintw(9, 20, "║                                                              ║");
-    mvprintw(10, 20, "╚══════════════════════════════════════════════════════════════╝");
-
+    mvprintw(1, start_x, "╔══════════════════════════════════════════════════════════════╗");
+    mvprintw(2, start_x, "║                                                              ║");
+    mvprintw(3, start_x, "║      ██╗      █████╗ ██╗███╗   ██╗██╗   ██╗██╗  ██╗          ║");
+    mvprintw(4, start_x, "║      ██║     ██╔══██╗██║████╗  ██║██║   ██║╚██╗██╔╝          ║");
+    mvprintw(5, start_x, "║      ██║     ███████║██║██╔██╗ ██║██║   ██║ ╚███╔╝           ║");
+    mvprintw(6, start_x, "║      ██║     ██╔══██║██║██║╚██╗██║██║   ██║ ██╔██╗           ║");
+    mvprintw(7, start_x, "║      ███████╗██║  ██║██║██║ ╚████║╚██████╔╝██╔╝ ██╗          ║");
+    mvprintw(8, start_x, "║      ╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝          ║");
+    mvprintw(9, start_x, "║                                                              ║");
+    mvprintw(10, start_x, "╚══════════════════════════════════════════════════════════════╝");
     attroff(A_BOLD | COLOR_PAIR(1));
 
-    // Subtitle with philosophy
+    // Центрированные подписи
+    int slogan1_x = (max_x - (int)strlen("Development Laboratory")) / 2;
+    int slogan2_x = (max_x - (int)strlen("Simplicity in design, security in execution")) / 2;
+    int slogan3_x = (max_x - (int)strlen("Minimalism with purpose, freedom with responsibility")) / 2;
+
     attron(COLOR_PAIR(2) | A_BOLD);
-    mvprintw(12, 35, "Development Laboratory");
+    mvprintw(12, slogan1_x, "Development Laboratory");
     attroff(COLOR_PAIR(2) | A_BOLD);
 
     attron(COLOR_PAIR(7));
-    mvprintw(13, 30, "Simplicity in design, security in execution");
-    mvprintw(14, 33, "Minimalism with purpose, freedom with responsibility");
+    mvprintw(13, slogan2_x, "Simplicity in design, security in execution");
+    mvprintw(14, slogan3_x, "Minimalism with purpose, freedom with responsibility");
     attroff(COLOR_PAIR(7));
 }
 
@@ -2150,8 +2166,12 @@ int main() {
         "Configuration Selection",
         "View Disk Information",
         "Check Network",
+        "Network Diagnostics",
         "Exit Installer"
     };
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+    int center_x = max_x / 2;
 
     while (1) {
         clear();
@@ -2161,19 +2181,35 @@ int main() {
 
         // Version and system info
         attron(COLOR_PAIR(7));
-        mvprintw(16, 35, "Version 1.0 | UEFI Ready | Secure Boot Compatible");
-        mvprintw(17, 40, "// Where simplicity meets security");
+        int info1_x = (max_x - (int)strlen("Version 1.0 | UEFI Ready | Secure Boot Compatible")) / 2;
+        int info2_x = (max_x - (int)strlen("// Where simplicity meets security")) / 2;
+
+        attron(COLOR_PAIR(7));
+        mvprintw(16, info1_x, "Version 1.0 | UEFI Ready | Secure Boot Compatible");
+        mvprintw(17, info2_x, "// Where simplicity meets security");
+        attroff(COLOR_PAIR(7));
 
         // Display current time
         time_t now = time(NULL);
         struct tm *tm_info = localtime(&now);
         char time_str[32];
         strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
-        mvprintw(19, 40, "System time: %s", time_str);
+        int time_x = (max_x - (int)strlen("System time: 2025-12-25 23:59:59")) / 2;
+        mvprintw(19, time_x, "System time: %s", time_str);
         attroff(COLOR_PAIR(7));
 
-        // Menu
-        for (int i = 0; i < 8; i++) {
+        int menu_count = sizeof(menu_items) / sizeof(menu_items[0]); // = 9
+        // Вычисляем позицию начала самого длинного пункта меню
+        int max_item_len = 0;
+        for (int i = 0; i < menu_count; i++) {
+            int len = strlen(menu_items[i]);
+            if (len > max_item_len) max_item_len = len;
+        }
+        // Добавляем 4 символа на "› " и отступ
+        int menu_width = max_item_len + 4;
+        int menu_start_x = (max_x - menu_width) / 2;
+
+        for (int i = 0; i < menu_count; i++) {
             if (i == menu_selection) {
                 // Highlight current selection with different colors
                 if (i == 0) {
@@ -2184,12 +2220,12 @@ int main() {
                     attron(A_REVERSE | COLOR_PAIR(5));  // Magenta for info
                 } else if (i == 4) {
                     attron(A_REVERSE | COLOR_PAIR(6));  // Blue for config
-                } else if (i == 7) {
+                } else if (i == 8) {
                     attron(A_REVERSE | COLOR_PAIR(3));  // Red for exit
-                } else {
+                } else  {
                     attron(A_REVERSE | COLOR_PAIR(7));  // White for others
                 }
-                mvprintw(22 + i * 2, 35, "› %s", menu_items[i]);
+                mvprintw(22 + i * 2, menu_start_x, "› %s", menu_items[i]);
 
                 // Turn off attributes
                 if (i == 0) {
@@ -2200,7 +2236,7 @@ int main() {
                     attroff(A_REVERSE | COLOR_PAIR(5));
                 } else if (i == 4) {
                     attroff(A_REVERSE | COLOR_PAIR(6));
-                } else if (i == 7) {
+                } else if (i == 8) {
                     attroff(A_REVERSE | COLOR_PAIR(3));
                 } else {
                     attroff(A_REVERSE | COLOR_PAIR(7));
@@ -2209,35 +2245,31 @@ int main() {
                 // Normal display with colors
                 if (i == 0) {
                     attron(COLOR_PAIR(2));
-                    mvprintw(22 + i * 2, 37, "%s", menu_items[i]);
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(2));
                 } else if (i == 1) {
                     attron(COLOR_PAIR(4));
-                    mvprintw(22 + i * 2, 37, "%s", menu_items[i]);
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(4));
                 } else if (i == 2 || i == 3) {
                     attron(COLOR_PAIR(5));
-                    mvprintw(22 + i * 2, 37, "%s", menu_items[i]);
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(5));
                 } else if (i == 4) {
                     attron(COLOR_PAIR(6));
-                    mvprintw(22 + i * 2, 37, "%s", menu_items[i]);
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(6));
-                } else if (i == 7) {
+                } else if (i == 8) {
                     attron(COLOR_PAIR(3));
-                    mvprintw(22 + i * 2, 37, "%s", menu_items[i]);
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(3));
                 } else {
                     attron(COLOR_PAIR(7));
-                    mvprintw(22 + i * 2, 37, "%s", menu_items[i]);
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(7));
                 }
             }
         }
-
-        // Footer information
-        attron(COLOR_PAIR(7));
-        mvprintw(39, 20, "Navigate: ↑ ↓ • Select: Enter • Exit: Esc");
 
         // Show system architecture
         FILE *fp = popen("uname -m", "r");
@@ -2246,8 +2278,8 @@ int main() {
             fgets(arch, sizeof(arch), fp);
             arch[strcspn(arch, "\n")] = 0;
             pclose(fp);
-            mvprintw(39, 60, "Arch: %s", arch);
         }
+
 
         // Show kernel version
         fp = popen("uname -r | cut -d- -f1", "r");
@@ -2256,14 +2288,24 @@ int main() {
             fgets(kernel, sizeof(kernel), fp);
             kernel[strcspn(kernel, "\n")] = 0;
             pclose(fp);
-            mvprintw(40, 60, "Kernel: %s", kernel);
         }
         attroff(COLOR_PAIR(7));
+
+        // navigate for center
+        int nav_x = (max_x - (int)strlen("Navigate: ↑ ↓ • Select: Enter • Exit: Esc")) / 2;
+        mvprintw(max_y - 3, nav_x, "Navigate: ↑ ↓ • Select: Enter • Exit: Esc");
+
+        // system info -- right
+        int right_col = max_x - 30; // 30 symbols with rigth
+
+        mvprintw(max_y - 3, right_col, "Arch: %s", arch);
+        mvprintw(max_y - 2, right_col, "Kernel: %s", kernel);
+        mvprintw(max_y - 1, right_col, "Built with: GCC %s", __VERSION__);
 
         int input = getch();
         switch (input) {
             case KEY_UP:
-                menu_selection = (menu_selection > 0) ? menu_selection - 1 : 7;
+                menu_selection = (menu_selection > 0) ? menu_selection - 1 : 8;
                 break;
             case KEY_DOWN:
                 menu_selection = (menu_selection < 7) ? menu_selection + 1 : 0;
@@ -2317,7 +2359,31 @@ int main() {
                         refresh();
                         getch();
                         break;
-                    case 7: // Exit
+                    case 7:
+                        clear();
+                        mvprintw(5, 10, "Starting network sniff...");
+                        refresh();
+
+                        char* ifname = get_first_active_interface();
+                        if (ifname) {
+                            mvprintw(6, 10, "Interface: %s", ifname);
+                            mvprintw(7, 10, "Sniffing for 5 seconds...");
+                            refresh();
+
+                            int pkts = start_passive_sniff(ifname, 5);
+                            mvprintw(8, 12, "Packets captured: %d", pkts);
+                            free(ifname);
+                        } else {
+                            attron(COLOR_PAIR(3));
+                            mvprintw(6, 10, "No active interface found!");
+                            attroff(COLOR_PAIR(3));
+                        }
+
+                        mvprintw(10, 10, "Press any key...");
+                        refresh();
+                        getch();
+                        break;
+                    case 8: // Exit
                         if (confirm_action("Exit Lainux installer?", "EXIT")) {
                             cleanup_ncurses();
                             curl_global_cleanup();
@@ -2335,7 +2401,6 @@ int main() {
                 break;
         }
     }
-
     cleanup_ncurses();
     curl_global_cleanup();
     return 0;
