@@ -1,0 +1,4 @@
+Configuration: Minimal (Base system only)
+Selected at: 1766590929
+Type: Minimal
+Disk Space: ~500MB
