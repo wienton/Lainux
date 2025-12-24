@@ -1,10 +1,11 @@
 /**
- * Lainux Installer - Enhanced Professional Edition
- * Secure, minimalist installation system with advanced features
- * Version v0.4.1 | Architecture: x86_64/ARM64 compatible
- * Author: Wienton | Lainux Development Laboratory
- * License: GPL-3.0
- */
+* @brief Lainux Installer
+* @version v0.3 beta only
+* @author Wienton | Lainux Development Laboratory
+* @license: GPL-3.0
+* @details contact with general developer LainuxOS and this installer you can from telegram @openrtc
+* @status: STATUS WORK **TRUE**
+*/
 
 #include <ncurses.h>
 #include <stdlib.h>
@@ -16,6 +17,7 @@
 #include <sys/wait.h>
 #include <sys/mount.h>
 #include <sys/sysinfo.h>
+#include <sys/statvfs.h>
 #include <time.h>
 #include <locale.h>
 #include <dirent.h>
@@ -24,13 +26,14 @@
 #include <signal.h>
 #include <pthread.h>
 #include <curl/curl.h>
+#include <ctype.h>
 
 // Configuration
 #define CORE_URL "https://github.com/wienton/Lainux/raw/main/lainux-core-0.1-1-x86_64.pkg.tar.zst"
 #define FALLBACK_CORE_URL "https://mirror.lainux.org/core/lainux-core-0.1-1-x86_64.pkg.tar.zst"
-#define ARCH_ISO_URL "https://archlinux.org/iso/latest/archlinux-x86_64.iso"
-#define MAX_DISKS 32
-#define MAX_PATH 512
+#define ARCH_ISO_URL "https://archlinux.gay/archlinux/iso/2025.12.01/archlinux-2025.12.01-x86_64.iso" // links for arch iso download
+#define MAX_DISKS 32 // max count disks
+#define MAX_PATH 512 // max path count
 #define LOG_BUFFER_SIZE 8192
 #define INSTALL_TIMEOUT 3600
 
@@ -122,7 +125,6 @@ void init_ncurses() {
     cbreak();
     keypad(stdscr, TRUE);
     curs_set(0);
-    timeout(100);
 
     // Initialize color pairs
     init_pair(1, COLOR_CYAN, -1);
@@ -265,7 +267,6 @@ int check_dependencies() {
 
     return (missing == 0);
 }
-
 // Thread-safe logging with timestamp
 void log_message(const char *format, ...) {
     pthread_mutex_lock(&log_mutex);
@@ -276,30 +277,24 @@ void log_message(const char *format, ...) {
     char timestamp[32];
     strftime(timestamp, sizeof(timestamp), "%H:%M:%S", tm_info);
 
+    char message[512];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+
+    // Только если log_win создан - пишем в него
     if (log_win) {
-        wprintw(log_win, "[%s] ", timestamp);
-
-        va_list args;
-        va_start(args, format);
-        vw_printw(log_win, format, args);
-        va_end(args);
-
-        wprintw(log_win, "\n");
+        wprintw(log_win, "[%s] %s\n", timestamp, message);
         wrefresh(log_win);
     } else {
-        printf("[%s] ", timestamp);
-
-        va_list args;
-        va_start(args, format);
-        vprintf(format, args);
-        va_end(args);
-
-        printf("\n");
+        // Иначе просто в stdout (для отладки)
+        printf("[%s] %s\n", timestamp, message);
+        fflush(stdout);
     }
 
     pthread_mutex_unlock(&log_mutex);
 }
-
 // Execute command with detailed error handling
 int run_command(const char *cmd, int show_output) {
     log_message("Executing: %s", cmd);
@@ -382,7 +377,7 @@ void get_system_info(SystemInfo *info) {
     gethostname(info->hostname, sizeof(info->hostname));
 
     // Kernel
-    fp = popen("uname -r", "r");
+     fp = popen("uname -r", "r");
     if (fp) {
         fgets(info->kernel, sizeof(info->kernel), fp);
         info->kernel[strcspn(info->kernel, "\n")] = 0;
@@ -557,71 +552,48 @@ int mount_with_retry(const char *source, const char *target, const char *fstype,
 int confirm_action(const char *question, const char *required_input) {
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
-
-    WINDOW *confirm_win = newwin(7, max_x - 20, max_y/2 - 3, 10);
+    WINDOW *confirm_win = newwin(8, max_x - 20, max_y/2 - 4, 10);
     box(confirm_win, 0, 0);
-
     mvwprintw(confirm_win, 1, 2, "%s", question);
-    mvwprintw(confirm_win, 2, 2, "Type '%s' to confirm (ESC to cancel): ", required_input);
+    mvwprintw(confirm_win, 2, 2, "Type '%s' to confirm (ESC to cancel):", required_input);
+    wrefresh(confirm_win);
 
     char input[32] = {0};
     int pos = 0;
-    int timeout = 30;  // 30 second timeout
-    time_t start_time = time(NULL);
+    int ch;
 
-    wmove(confirm_win, 3, 4);
-    wrefresh(confirm_win);
-
-    echo();
-    nocbreak();  // Disable cbreak for proper input
-    timeout(1000);  // 1 second timeout for getch
+    flushinp();
 
     while (pos < (int)sizeof(input) - 1) {
-        int ch = wgetch(confirm_win);
+        ch = wgetch(confirm_win);
+        if (ch == ERR) continue; // timeout
 
-        if (ch == ERR) {
-            // Timeout check
-            if (time(NULL) - start_time > timeout) {
-                mvwprintw(confirm_win, 4, 2, "Timeout! Action cancelled.");
-                wrefresh(confirm_win);
-                sleep(2);
-                break;
-            }
-            continue;
+        if (ch == 27) { // ESC
+            delwin(confirm_win);
+            return 0;
         }
-
-        if (ch == '\n' || ch == '\r') {
+        if (ch == '\n' || ch == '\r') { // Enter
             break;
-        } else if (ch == 27) {  // ESC
-            input[0] = '\0';
-            break;
-        } else if (ch == 127 || ch == KEY_BACKSPACE) {  // Backspace
+        }
+        if (ch == KEY_BACKSPACE || ch == 127) {
             if (pos > 0) {
                 pos--;
                 input[pos] = '\0';
                 mvwaddch(confirm_win, 3, 4 + pos, ' ');
                 wmove(confirm_win, 3, 4 + pos);
             }
-        } else if (ch >= 32 && ch <= 126) {  // Printable characters
-            input[pos++] = ch;
+        } else if (ch >= 32 && ch <= 126) { // printable ASCII
+            input[pos++] = (char)ch;
             input[pos] = '\0';
+            mvwaddch(confirm_win, 3, 4 + pos - 1, ch);
         }
 
-        // Clear and redraw input line
-        mvwprintw(confirm_win, 3, 4, "%-30s", input);
-        wmove(confirm_win, 3, 4 + pos);
         wrefresh(confirm_win);
     }
 
-    noecho();
-    cbreak();
-    timeout(100);
-
     delwin(confirm_win);
-
     return (strcmp(input, required_input) == 0);
 }
-
 // Enhanced disk info display
 void show_disk_info() {
     clear();
@@ -784,7 +756,7 @@ void show_hardware_info() {
     attroff(A_BOLD);
 
     // Check virtualization support
-    FILE *fp = popen("grep -E '(vmx|svm)' /proc/cpuinfo 2>/dev/null | head -1", "r");
+    FILE* fp = popen("grep -E '(vmx|svm)' /proc/cpuinfo 2>/dev/null | head -1", "r");
     if (fp) {
         char buffer[256];
         if (fgets(buffer, sizeof(buffer), fp)) {
@@ -1077,7 +1049,7 @@ void create_partitions(const char *disk) {
 
     // Verify partitions were created
     char part1[32], part2[32];
-    if (strncmp(disk, "nvme", 4) == 0) {
+    if (strncmp(disk, "nvme", 4) == 0 || strncmp(disk, "vd", 2) == 0) {
         snprintf(part1, sizeof(part1), "%sp1", dev_path);
         snprintf(part2, sizeof(part2), "%sp2", dev_path);
     } else {
@@ -1086,7 +1058,7 @@ void create_partitions(const char *disk) {
     }
 
     int attempts = 0;
-    while ((!file_exists(part1) || !file_exists(part2)) && attempts < 10) {
+    while ((!file_exists(part1) || !file_exists(part2)) && attempts < 15) {
         log_message("Waiting for partitions to appear (attempt %d)...", attempts + 1);
         sleep(1);
         attempts++;
@@ -1094,7 +1066,8 @@ void create_partitions(const char *disk) {
     }
 
     if (!file_exists(part1) || !file_exists(part2)) {
-        log_message("Partition creation failed. Trying manual check...");
+        log_message("Partition creation failed. Expected: %s, %s", part1, part2);
+        log_message("Trying manual check...");
         snprintf(cmd, sizeof(cmd), "ls -la %s*", dev_path);
         run_command(cmd, 1);
     } else {
@@ -1125,12 +1098,12 @@ void download_arch_iso() {
     char cmd[512];
 
     // Try wget first (supports continue)
-    snprintf(cmd, sizeof(cmd), "wget -c --timeout=30 --tries=3 '%s' -O archlinux.iso 2>&1 | grep --line-buffered -E '([0-9]+)%|speed'", ARCH_ISO_URL);
+    snprintf(cmd, sizeof(cmd), "wget -c --timeout=30 --tries=3 '%s' -O archlinux.iso 2>&1 | grep --line-buffered -E '([0-9]+)%%|speed'", ARCH_ISO_URL);
     int result = run_command(cmd, 1);
 
     if (result != 0) {
         log_message("wget failed, trying curl...");
-        snprintf(cmd, sizeof(cmd), "curl -L -C - --connect-timeout 30 --retry 3 '%s' -o archlinux.iso 2>&1 | grep --line-buffered -E '([0-9]+\\.?[0-9]*%)|speed'", ARCH_ISO_URL);
+        snprintf(cmd, sizeof(cmd), "curl -L -C - --connect-timeout 30 --retry 3 '%s' -o archlinux.iso 2>&1 | grep --line-buffered -E '([0-9]+[.][0-9]*%%)|speed'", ARCH_ISO_URL);
         run_command(cmd, 1);
     }
 
@@ -1162,7 +1135,7 @@ int find_iso_files(char files[][MAX_PATH], int max_files) {
                 char lower_ext[8];
                 strncpy(lower_ext, ext, sizeof(lower_ext)-1);
                 for (int i = 0; lower_ext[i]; i++) {
-                    lower_ext[i] = tolower(lower_ext[i]);
+                    lower_ext[i] = tolower((unsigned char)lower_ext[i]);
                 }
 
                 if (strcmp(lower_ext, ".iso") == 0 ||
@@ -1257,11 +1230,23 @@ void select_iso_file(char *iso_path, size_t size) {
                     refresh();
                     usleep(100000);
 
-                    // Check if download completed
+                    // Check if download completed (simple non-portable wait)
+                    int try_result;
+                    // Use non-blocking check
+                    struct timespec ts = {0, 10000000}; // 10ms
+                    nanosleep(&ts, NULL);
+
+                    // Try to join with zero timeout (non-portable, but works on Linux)
                     void *result;
-                    if (pthread_tryjoin_np(download_thread_id, &result) == 0) {
-                        break;
+                    #ifdef __linux__
+                    usleep(100000);
+                    #else
+                    // For non-Linux systems, just wait
+                    if (i == 29) {
+                        pthread_join(download_thread_id, NULL);
                     }
+                    #endif
+                    pthread_join(download_thread_id, NULL);
                 }
 
                 pthread_join(download_thread_id, NULL);
@@ -1441,7 +1426,7 @@ void setup_qemu_vm(const char *iso_path) {
     if (script) {
         fprintf(script, "#!/bin/bash\n");
         fprintf(script, "# Lainux VM Installation Script\n");
-        fprintf(script, "# Generated on: %s\n", ctime(&(time_t){time(NULL)}));
+        fprintf(script, "# Generated on: %s", ctime(&(time_t){time(NULL)}));
         fprintf(script, "\n");
         fprintf(script, "echo 'Starting Lainux VM installation...'\n");
         fprintf(script, "echo 'ISO: %s'\n", iso_path);
@@ -1904,7 +1889,7 @@ void perform_installation(const char *disk) {
     run_command("echo 'lainux:lainux' | arch-chroot /mnt chpasswd", 0);
 
     // Configure sudo
-    run_command("echo '%wheel ALL=(ALL) ALL' > /mnt/etc/sudoers.d/wheel", 0);
+    run_command("echo '%%wheel ALL=(ALL) ALL' > /mnt/etc/sudoers.d/wheel", 0);
     run_command("chmod 440 /mnt/etc/sudoers.d/wheel", 0);
 
     // Enable network services

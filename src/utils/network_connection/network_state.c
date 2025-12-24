@@ -87,10 +87,8 @@ bool check_by_dns(const char* dns_server, int timeout_sec) {
     return (ret == 0);
 }
 
-// Проверка через HTTP запрос (упрощенная)
+// Проверка через HTTP запрос
 bool check_by_http(const char* url, int timeout_sec) {
-    // Для HTTP проверки лучше использовать libcurl,
-    // но для минималистичного подхода можно использовать wget/curl через system
 
     char command[512];
 
