@@ -9,6 +9,8 @@
  *
  */
 
+#include <complex.h>
+#include <openssl/sha.h>
 #include <stdio.h>
 #include <net/if.h>
 #include <sys/types.h>
@@ -79,6 +81,26 @@ void free_resource(char* buffer)
 {
     free(buffer);
 }
+
+int encrypt_package()
+{
+    connect_driver_net conn_drv_net = {0};
+
+    conn_drv_net.ctx = malloc(sizeof(SHA256_CTX));
+    if(!conn_drv_net.ctx) {
+        fprintf(stderr, "error memory out for sha256 ctx");
+        return -1;
+    }
+
+    bool result_init = SHA256_Init(conn_drv_net.ctx);
+    if(!result_init) {
+        perror("error init sha256 ctx\n");
+        return 1;
+    }
+
+    printf("success init sha256\n");
+}
+
 
 // int main(int argc, char** argv)
 // {

@@ -2,7 +2,7 @@
 #define NETWORK_STATE_H
 
 #include <stdbool.h>
-
+#include <openssl/sha.h>
 // struct for connect network driver
 typedef struct connect_driver_network {
 
@@ -20,14 +20,16 @@ typedef struct connect_driver_network {
 
      enum status_network {
 
-        SUCCESS_NETWORK, // success network connectioon
-        ERROR_NETWORK_CONNECT, // error network connection
-        ERROR_RESPONSE_PACKAGE, // error response package
-        ERROR_REQUEST_PACKAGE,
-        ERROR_ECNRYPT_PACKAGE,
-        ERROR_DECRYPT_PACKAGE,
+        SUCCESS_NETWORK, // success network connectioon status 1
+        ERROR_NETWORK_CONNECT, // error network connection status 2
+        ERROR_RESPONSE_PACKAGE, // error response package status 3
+        ERROR_REQUEST_PACKAGE, // error request package encrypted status 4
+        ERROR_ECNRYPT_PACKAGE,  // error encrypt package :( status 5
+        ERROR_DECRYPT_PACKAGE,  // error decrypt package, status 6
 
     };
+
+    SHA256_CTX* ctx;
 
 } connect_driver_net;
 

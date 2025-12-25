@@ -47,6 +47,7 @@ build() {
         -Wextra \
         -O2 \
         -std=c11 \
+        -lcrypto \
         -D_DEFAULT_SOURCE
     log "${GREEN}Build successful!${NC}"
     log "Binary saved as './$BINARY'"
