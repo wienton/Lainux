@@ -6,7 +6,6 @@ import "ui"
 layer_01 {
     print("Initializing Protocol on Lainux...")
 
-    // Переменные в духе Си, но лаконичнее
     let target_vm = "qemu-x86_64"
 
     // Работа с железом через встроенные функции
