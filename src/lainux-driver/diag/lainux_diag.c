@@ -7,6 +7,13 @@
 // simulation(right now visual, after)
 void fast_scan(const char* msg) {
     DRV_INFO("%s", msg);
+
+    DRV_OK("success started fast scan....\n");
+    for(int i; i < 6; i++){
+        DRV_INFO("[%d]\n", i);
+        sleep(1);
+    }
+
     usleep(300000); // 0.3
 }
 
@@ -43,7 +50,7 @@ void check_uefi() {
 }
 
 int main(int argc, char *argv[]) {
-    printf(CLR_BOLD "\n--- LAINUX SYSTEM DIAGNOSTICS ---\n\n" CLR_RESET);
+    printf(CLR_BOLD "\n**** LAINUX SYSTEM DIAGNOSTICS ****\n\n" CLR_RESET);
 
     fast_scan("Probing CPU architecture...");
     check_cpu();
