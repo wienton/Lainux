@@ -55,7 +55,6 @@ int main(int argc, char *argv[]) {
     check_uefi();
 
     fast_scan("Checking storage controllers...");
-    // Можно добавить проверку /sys/class/block
     DRV_OK("Storage: NVMe/SATA controller identified.");
 
     fast_scan("Pinging the Wired (Network check)...");

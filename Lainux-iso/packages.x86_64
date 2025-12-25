@@ -48,6 +48,8 @@ ldns
 less
 lftp
 gcc
+neovim
+tor-browser
 git
 make
 nmap
