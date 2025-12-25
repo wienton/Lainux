@@ -5,12 +5,14 @@ set -e
 BINARY="installer"
 SRC_DIR="src/installer"
 UTILS_DIR="src/utils/network_connection"
+UI_DIR="src/installer/ui"
 
 # sources
 SOURCES=(
     "$SRC_DIR/installer.c"
     "$UTILS_DIR/network_sniffer.c"
     "$UTILS_DIR/network_state.c"
+    "$UI_DIR/logo.c"
 )
 
 # dependencies
@@ -31,6 +33,9 @@ error() {
     exit 1
 }
 
+build_drivers() {
+    log "Compiling Drivers"
+}
 
 build() {
     log "Compiling $BINARY..."

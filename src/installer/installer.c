@@ -5,15 +5,7 @@
 * @license: GPL-3.0
 * @details contact with general developer LainuxOS and this installer you can from telegram @openrtc
 * @status: STATUS WORK **TRUE**
-
-* @update:
-* * feat: center-align all UI elements including logo, menu, and footer
-
-    Dynamically calculate terminal width to center logo, version info, time, and navigation hints
-    Implement automatic menu alignment based on the longest item width
-    Display compiler version (GCC) in footer using __VERSION__
-    Ensure consistent and responsive layout across different terminal sizes
-
+* @also: download iso from github release for virtual machine.
 */
 
 #include <ncurses.h>
@@ -39,40 +31,10 @@
 
 #include "../utils/network_connection/network_sniffer.h"
 #include "../utils/network_connection/network_state.h"
-// Configuration
-#define CORE_URL "https://github.com/wienton/Lainux/raw/main/lainux-core-0.1-1-x86_64.pkg.tar.zst"
-#define FALLBACK_CORE_URL "https://mirror.lainux.org/core/lainux-core-0.1-1-x86_64.pkg.tar.zst"
-#define ARCH_ISO_URL "https://archlinux.gay/archlinux/iso/2025.12.01/archlinux-2025.12.01-x86_64.iso" // links for arch iso download
-#define MAX_DISKS 32 // max count disks
-#define MAX_PATH 512 // max path count
-#define LOG_BUFFER_SIZE 8192
-#define INSTALL_TIMEOUT 3600
 
-// Error codes
-#define ERR_SUCCESS 0
-#define ERR_IO_FAILURE 1
-#define ERR_NETWORK 2
-#define ERR_DEPENDENCY 3
-#define ERR_PERMISSION 4
-#define ERR_DISK_SPACE 5
+// general header for installer
 
-// Global structures
-typedef struct {
-    char name[64];
-    char size[32];
-    char model[128];
-    char type[16];
-} DiskInfo;
-
-typedef struct {
-    int total_cores;
-    int avail_cores;
-    long total_ram;
-    long avail_ram;
-    char arch[32];
-    char hostname[64];
-    char kernel[64];
-} SystemInfo;
+#include "include/installer.h"
 
 // Global variables
 WINDOW *log_win;
@@ -80,46 +42,6 @@ WINDOW *status_win;
 char log_buffer[LOG_BUFFER_SIZE];
 volatile int install_running = 0;
 pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-// Function prototypes
-void init_ncurses();
-void cleanup_ncurses();
-void signal_handler(int sig);
-int file_exists(const char *path);
-int check_filesystem(const char *path);
-long get_available_space(const char *path);
-int check_network();
-int check_dependencies();
-void log_message(const char *format, ...);
-int run_command(const char *cmd, int show_output);
-int run_command_with_fallback(const char *cmd, const char *fallback);
-void get_target_disk(char *target, size_t size);
-void show_disk_info();
-int confirm_action(const char *question, const char *required_input);
-void create_partitions(const char *disk);
-void perform_installation(const char *disk);
-void show_summary(const char *disk);
-void install_on_virtual_machine();
-int check_qemu_dependencies();
-void create_virtual_disk();
-void setup_qemu_vm(const char *iso_path);
-void download_arch_iso();
-void select_iso_file(char *iso_path, size_t size);
-int find_iso_files(char files[][MAX_PATH], int max_files);
-void show_hardware_info();
-void select_configuration();
-void show_logo();
-void get_hardware_details(char *cpu_info, char *memory_info, char *gpu_info, char *storage_info);
-void draw_progress_bar(int y, int x, int width, float progress);
-void check_system_requirements();
-int verify_efi();
-int secure_wipe(const char *device);
-void emergency_cleanup();
-void *download_thread(void *arg);
-int download_file(const char *url, const char *output);
-void get_system_info(SystemInfo *info);
-void display_status(const char *message);
-int mount_with_retry(const char *source, const char *target, const char *fstype, unsigned long flags);
 
 // Initialize ncurses with error handling
 void init_ncurses() {
@@ -1088,14 +1010,14 @@ void create_partitions(const char *disk) {
 
 // Download Arch Linux ISO with progress
 void download_arch_iso() {
-    log_message("Downloading Arch Linux ISO...");
+    log_message("Downloading Lainux ISO...");
 
     // Check existing file
-    if (file_exists("archlinux.iso")) {
+    if (file_exists("lainux.iso")) {
         log_message("Existing ISO found, checking integrity...");
         long size = 0;
         struct stat st;
-        if (stat("archlinux.iso", &st) == 0) {
+        if (stat("lainux.iso", &st) == 0) {
             size = st.st_size;
         }
 
@@ -1109,22 +1031,22 @@ void download_arch_iso() {
     char cmd[512];
 
     // Try wget first (supports continue)
-    snprintf(cmd, sizeof(cmd), "wget -c --timeout=30 --tries=3 '%s' -O archlinux.iso 2>&1 | grep --line-buffered -E '([0-9]+)%%|speed'", ARCH_ISO_URL);
+    snprintf(cmd, sizeof(cmd), "wget -c --timeout=30 --tries=3 '%s' -O lainux.iso 2>&1 | grep --line-buffered -E '([0-9]+)%%|speed'", ARCH_ISO_URL);
     int result = run_command(cmd, 1);
 
     if (result != 0) {
         log_message("wget failed, trying curl...");
-        snprintf(cmd, sizeof(cmd), "curl -L -C - --connect-timeout 30 --retry 3 '%s' -o archlinux.iso 2>&1 | grep --line-buffered -E '([0-9]+[.][0-9]*%%)|speed'", ARCH_ISO_URL);
+        snprintf(cmd, sizeof(cmd), "curl -L -C - --connect-timeout 30 --retry 3 '%s' -o lainux.iso 2>&1 | grep --line-buffered -E '([0-9]+[.][0-9]*%%)|speed'", ARCH_ISO_URL);
         run_command(cmd, 1);
     }
 
-    if (file_exists("archlinux.iso")) {
+    if (file_exists("lainux.iso")) {
         struct stat st;
-        if (stat("archlinux.iso", &st) == 0) {
+        if (stat("lainux.iso", &st) == 0) {
             log_message("Download complete: %ld MB", st.st_size / (1024 * 1024));
         }
     } else {
-        log_message("Failed to download Arch Linux ISO");
+        log_message("Failed to download LainuxOS ISO");
     }
 }
 
@@ -1205,7 +1127,7 @@ void select_iso_file(char *iso_path, size_t size) {
 
     mvprintw(4, 10, "Choose ISO source:");
     attron(COLOR_PAIR(2));
-    mvprintw(5, 15, "1. Download latest Arch Linux ISO");
+    mvprintw(5, 15, "1. Download latest LainuxOS ISO");
     attroff(COLOR_PAIR(2));
     mvprintw(6, 15, "2. Use existing ISO file");
     mvprintw(7, 15, "3. Cancel and return to menu");
@@ -1220,7 +1142,7 @@ void select_iso_file(char *iso_path, size_t size) {
     switch (choice[0]) {
         case '1': {
             clear();
-            mvprintw(5, 10, "Downloading latest Arch Linux ISO...");
+            mvprintw(5, 10, "Downloading latest LainuxOS ISO...");
             mvprintw(6, 10, "This may take several minutes depending on your connection.");
             refresh();
 
@@ -1228,7 +1150,7 @@ void select_iso_file(char *iso_path, size_t size) {
             pthread_t download_thread_id;
             char *args[2];
             args[0] = (char*)ARCH_ISO_URL;
-            args[1] = "archlinux.iso";
+            args[1] = "lainux.iso";
 
             mvprintw(8, 10, "Download in progress...");
             mvprintw(9, 10, "Please wait.");
@@ -1263,15 +1185,15 @@ void select_iso_file(char *iso_path, size_t size) {
                 pthread_join(download_thread_id, NULL);
             }
 
-            if (file_exists("archlinux.iso")) {
-                strncpy(iso_path, "archlinux.iso", size);
+            if (file_exists("lainux.iso")) {
+                strncpy(iso_path, "lainux.iso", size);
 
                 // Verify ISO size
                 struct stat st;
-                if (stat("archlinux.iso", &st) == 0) {
+                if (stat("lainux.iso", &st) == 0) {
                     clear();
                     mvprintw(5, 10, "Download complete!");
-                    mvprintw(6, 10, "File: archlinux.iso");
+                    mvprintw(6, 10, "File: lainux.iso");
                     mvprintw(7, 10, "Size: %.2f GB", st.st_size / (1024.0 * 1024.0 * 1024.0));
                     refresh();
                     sleep(2);
@@ -1642,40 +1564,6 @@ void select_configuration() {
             break;
         }
     }
-}
-
-// Show Lainux logo with enhanced design
-void show_logo() {
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-    int start_x = (max_x - 62) / 2; // длина самой длинной строки логотипа
-
-    attron(A_BOLD | COLOR_PAIR(1));
-    mvprintw(1, start_x, "╔══════════════════════════════════════════════════════════════╗");
-    mvprintw(2, start_x, "║                                                              ║");
-    mvprintw(3, start_x, "║      ██╗      █████╗ ██╗███╗   ██╗██╗   ██╗██╗  ██╗          ║");
-    mvprintw(4, start_x, "║      ██║     ██╔══██╗██║████╗  ██║██║   ██║╚██╗██╔╝          ║");
-    mvprintw(5, start_x, "║      ██║     ███████║██║██╔██╗ ██║██║   ██║ ╚███╔╝           ║");
-    mvprintw(6, start_x, "║      ██║     ██╔══██║██║██║╚██╗██║██║   ██║ ██╔██╗           ║");
-    mvprintw(7, start_x, "║      ███████╗██║  ██║██║██║ ╚████║╚██████╔╝██╔╝ ██╗          ║");
-    mvprintw(8, start_x, "║      ╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝          ║");
-    mvprintw(9, start_x, "║                                                              ║");
-    mvprintw(10, start_x, "╚══════════════════════════════════════════════════════════════╝");
-    attroff(A_BOLD | COLOR_PAIR(1));
-
-    // Центрированные подписи
-    int slogan1_x = (max_x - (int)strlen("Development Laboratory")) / 2;
-    int slogan2_x = (max_x - (int)strlen("Simplicity in design, security in execution")) / 2;
-    int slogan3_x = (max_x - (int)strlen("Minimalism with purpose, freedom with responsibility")) / 2;
-
-    attron(COLOR_PAIR(2) | A_BOLD);
-    mvprintw(12, slogan1_x, "Development Laboratory");
-    attroff(COLOR_PAIR(2) | A_BOLD);
-
-    attron(COLOR_PAIR(7));
-    mvprintw(13, slogan2_x, "Simplicity in design, security in execution");
-    mvprintw(14, slogan3_x, "Minimalism with purpose, freedom with responsibility");
-    attroff(COLOR_PAIR(7));
 }
 
 // Main installation procedure
