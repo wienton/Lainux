@@ -12,6 +12,5 @@
  int main(void)
  {
 
-    printk("drivers lainux started success");
     return 0;
  }
