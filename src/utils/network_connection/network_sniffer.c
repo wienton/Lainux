@@ -1,4 +1,15 @@
+/*
+ * @author: Wienton
+ * @details: network check packets
+ * @version: none
+ *
+ *
+*/
+
 // network_sniffer.c
+#include "network_sniffer.h"
+#include "network_state.h"
+#include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +21,7 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 
+#include "../../lainux-driver/src/header/logger.h"
 int start_passive_sniff(const char* ifname, int duration_sec) {
     int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (sock < 0) {
@@ -51,3 +63,43 @@ int start_passive_sniff(const char* ifname, int duration_sec) {
     close(sock);
     return packet_count;
 }
+
+network_sniffer get_package(network_sniffer)
+{
+    FILE* file_log = fopen("sniffer.log", "wb");
+    network_sniffer* net_sniff = malloc(sizeof(network_sniffer));
+    // getting package for viewer
+    DRV_OK("GETTING PACKAGES\n");
+    bool status_get_package = true;
+    if(status_get_package) {
+        DRV_ERR("error getting package, please check logs\n");
+        bool status_get_package = false;
+        fscanf(file_log, "error gettings packages");
+    }
+
+    char* ifname = get_first_active_interface();
+    if (ifname) {
+        DRV_INFO("Interface: %s\n", ifname);
+        DRV_INFO("Sniffing for 5 seconds\n");
+        refresh();
+
+        int pkts = start_passive_sniff(ifname, 5);
+        DRV_OK("Packets captured: %d\n", pkts);
+        free(ifname);
+    } else {
+        DRV_ERR("No active interface found..\n");
+    }
+
+    free(ifname);
+    free(net_sniff);
+}
+
+
+int main(void)
+{
+    network_sniffer netw_sniff;
+    get_package(netw_sniff);
+    return 0;
+}
+
+

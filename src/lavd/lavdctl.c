@@ -56,28 +56,28 @@ int started_lavd_system()
     printf("layer 03: openrc service diagnostics\n");
     system("sudo lavdctl profile --service openrc");
 
-    printf("layer 04: userspace diagnostics\n");
+    DRV_OK("layer 04: userspace diagnostics\n");
     system("sudo lavdctl top --sort cpu");
 
-    printf("wired: full system analysis\n");
+    DRV_OK("wired: full system analysis\n");
     system("sudo lavdctl diagnose full --output /tmp/lainux-diag-$(date +%s).json");
 
     int layer;
     for(layer = 0; layer < 4; layer++) {
-        printf("checking layer %d\n", layer);
+        DRV_INFO("checking layer %d\n", layer);
         system("/usr/local/bin/lainux-lavd-integration.sh layer%layer");
     }
 
-    printf("lets all love lain\n");
-    printf("lainux lavd integration\n");
-    printf("usage: %d {layer1| layer2| layer3| layer4| wired}", layer);
+    DRV_INFO("lets all love lain\n");
+    DRV_OK("lainux lavd integration\n");
+    DRV_INFO("usage: %d {layer1| layer2| layer3| layer4| wired}", layer);
 
     return true;
 }
 
 int main(void)
 {
-    printf("hello, started system lavdctl ? (y/n): ");
+    DRV_INFO("hello, started system lavdctl ? (y/n): ");
 
     char select_option;
 
@@ -94,7 +94,9 @@ int main(void)
             exit(EXIT_FAILURE);
             break;
         default:
-            DRV_ERR("unknow option");
+            DRV_ERR("unknow option\n");
+            DRV_INFO("please enter y or n and try later\n");
+            exit(EXIT_FAILURE);
             break;
     }
 
