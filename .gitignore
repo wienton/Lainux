@@ -4,8 +4,10 @@
 *.so
 *.iso
 
+# binary files
+installer.lain
+
 # ISO build output
-lainux-iso/
 Lainux-iso/
 
 lainux-vm.qcow2

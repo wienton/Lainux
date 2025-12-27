@@ -2,7 +2,7 @@
 
 set -e
 
-BINARY="installer"
+BINARY="installer.lain"
 SRC_DIR="src/installer"
 UTILS_DIR="src/utils/network_connection"
 UI_DIR="src/installer/ui"

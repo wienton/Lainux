@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+### Customization script for Lainux ISO
+### This script runs inside the chroot during ISO build
+
+# Set up localization
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+echo "ru_RU.UTF-8 UTF-8" >> /etc/locale.gen
+locale-gen
+
+# Set system language
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+echo "LC_COLLATE=C" >> /etc/locale.conf
+
+# Set timezone (change to your timezone)
+ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime
+
+# Set hostname
+echo "lainux" > /etc/hostname
+
+# Set up hosts file
+cat > /etc/hosts << 'HOSTS_EOF'
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   lainux.localdomain   lainux
+HOSTS_EOF
+
+# Create user (if not exists)
+if ! id -u lain >/dev/null 2>&1; then
+    useradd -m -G wheel,users -s /bin/bash lain
+    echo "lain:password" | chpasswd
+fi
+
+# Enable sudo for wheel group
+echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
+
+# Set root password (change this!)
+echo "root:root" | chpasswd
+
+# Enable services for live environment
+systemctl enable NetworkManager
+systemctl enable sshd
+systemctl enable lightdm  # if you have display manager
+
+# Customize shell prompt
+cat > /etc/profile.d/custom_prompt.sh << 'PROMPT_EOF'
+# Custom prompt for Lainux
+if [ "$PS1" ]; then
+    PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+fi
+PROMPT_EOF
+
+# Install default packages if needed (optional)
+# pacman -S --noconfirm firefox vim git htop neofetch
+
+# Create desktop shortcuts or configurations
+mkdir -p /home/lain/.config/autostart
+mkdir -p /home/lain/Desktop
+
+# Create welcome message
+cat > /etc/motd << 'MOTD_EOF'
+
+╔═══════════════════════════════════════════╗
+║        Welcome to Lainux OS!             ║
+║     A lightweight Arch-based distro      ║
+╚═══════════════════════════════════════════╝
+
+MOTD_EOF
+
+# Clean up pacman cache to reduce ISO size
+pacman -Scc --noconfirm
+
+# Generate initramfs
+mkinitcpio -P
+
+echo "Customization completed successfully!"
