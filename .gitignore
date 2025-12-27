@@ -1,0 +1,25 @@
+# Build artifacts
+installer
+*.o
+*.a
+*.so
+*.iso
+
+# ISO build output
+lainux-iso/
+Lainux-iso/
+
+lainux-vm.qcow2
+
+# Driver build
+src/lainux-driver/src/lainux
+src/lainux-driver/diag/
+src/lainux-driver/src/header/
+
+# Temporary files
+*~
+.*.swp
+.DS_Store
+
+# Logs and caches
+*.log
