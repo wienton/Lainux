@@ -1,5 +1,4 @@
 # Build artifacts
-installer
 *.o
 *.a
 *.so
