@@ -95,11 +95,4 @@ network_sniffer get_package(network_sniffer)
 }
 
 
-int main(void)
-{
-    network_sniffer netw_sniff;
-    get_package(netw_sniff);
-    return 0;
-}
-
 

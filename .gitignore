@@ -3,10 +3,13 @@ installer
 *.o
 *.a
 *.so
+*.iso
 
 # ISO build output
 lainux-iso/
 Lainux-iso/
+
+lainux-vm.qcow2
 
 # Driver build
 src/lainux-driver/src/lainux

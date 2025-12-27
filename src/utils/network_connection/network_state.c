@@ -99,6 +99,8 @@ int encrypt_package()
     }
 
     printf("success init sha256\n");
+
+    return 0;
 }
 
 

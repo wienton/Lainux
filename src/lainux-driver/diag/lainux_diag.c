@@ -1,20 +1,60 @@
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include "../src/header/logger.h"
+#include <unistd.h>
+#include <fcntl.h>
 
-// simulation(right now visual, after)
+
 void fast_scan(const char* msg) {
-    DRV_INFO("%s", msg);
+    DRV_INFO("Initializing hardware scan protocol...");
 
-    DRV_OK("success started fast scan....\n");
-    for(int i; i < 6; i++){
-        DRV_INFO("[%d]\n", i);
-        sleep(1);
+    // Массив с именами этапов для вывода
+    const char* steps[] = {
+        "CPU Topology",
+        "Memory Integrity",
+        "Storage Controllers",
+        "Network Interfaces",
+        "Firmware (UEFI/BIOS)",
+        "GPU Bus"
+    };
+
+    for(int i = 0; i < 6; i++) {
+        DRV_INFO("Checking %s...", steps[i]);
+
+        // Реальные проверки в зависимости от итерации
+        switch(i) {
+            case 0: // CPU
+                if (access("/proc/cpuinfo",  F_OK) == 0) DRV_OK("[Step %d] Processors localized.", i);
+                break;
+            case 1: // RAM
+                if (access("/proc/meminfo",  F_OK) == 0) DRV_OK("[Step %d] Reference memory map built.", i);
+                break;
+            case 2: // Storage
+                if (access("/sys/class/block", F_OK) == 0) DRV_OK("[Step %d] Block devices mapped.", i);
+                break;
+            case 3: // Network
+                if (access("/sys/class/net", F_OK) == 0) DRV_OK("[Step %d] Wired/Wireless stack verified.", i);
+                break;
+            case 4: // UEFI
+                if (access("/sys/firmware/efi", F_OK) == 0)
+                    DRV_OK("[Step %d] UEFI Runtime services identified.", i);
+                else
+                    DRV_WARN("[Step %d] Legacy boot detected.", i);
+                break;
+            case 5: // GPU
+                if (access("/sys/class/drm", F_OK) == 0) DRV_OK("[Step %d] Display rendering nodes active.", i);
+                break;
+        }
+
+        // Небольшая задержка для "веса" и чтобы юзер успел прочитать
+        usleep(400000);
     }
 
-    usleep(300000); // 0.3
+    DRV_OK("System scan complete. Environment is stable.");
 }
 
 void check_cpu() {

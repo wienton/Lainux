@@ -2069,12 +2069,10 @@ int main() {
 
         // Version and system info
         attron(COLOR_PAIR(7));
-        int info1_x = (max_x - (int)strlen("Version 1.0 | UEFI Ready | Secure Boot Compatible")) / 2;
-        int info2_x = (max_x - (int)strlen("// Where simplicity meets security")) / 2;
+        int info1_x = (max_x - (int)strlen("Version v0.1 | UEFI Ready | Secure Boot Compatible")) / 2;
 
         attron(COLOR_PAIR(7));
-        mvprintw(16, info1_x, "Version 1.0 | UEFI Ready | Secure Boot Compatible");
-        mvprintw(17, info2_x, "// Where simplicity meets security");
+        mvprintw(16, info1_x, "Version v0.1 | UEFI Ready | Secure Boot Compatible");
         attroff(COLOR_PAIR(7));
 
         // Display current time
@@ -2221,32 +2219,43 @@ int main() {
                     case 5: // Disk Info
                         show_disk_info();
                         break;
-                    case 6: // Network Check
-                        clear();
-                        mvprintw(5, 10, "Network status: ");
-                        if (check_network()) {
-                            attron(COLOR_PAIR(2));
-                            mvprintw(5, 27, "Connected ✓");
-                            attroff(COLOR_PAIR(2));
+                 case 6: // Network Check
+                    clear();
+                    mvprintw(5, 10, "Network status: ");
+                    mvprintw(6, 10, "Checking...");
+                    refresh(); // socket thinkin
 
-                            // Show IP address
-                            FILE *fp = popen("curl -s https://checkip.amazonaws.com 2>/dev/null || echo 'Unknown'", "r");
-                            char ip[64];
-                            if (fp) {
-                                fgets(ip, sizeof(ip), fp);
-                                ip[strcspn(ip, "\n")] = 0;
-                                pclose(fp);
-                                mvprintw(7, 10, "Public IP: %s", ip);
-                            }
+                    if (check_network()) {
+                        mvprintw(6, 10, "           ");
+
+                        attron(COLOR_PAIR(2)); // Зеленый, я так понял?
+                        mvprintw(5, 27, "Connected ✓");
+                        attroff(COLOR_PAIR(2));
+
+                        // public IP from ipify
+                        FILE *fp = popen("curl -s --max-time 2 https://api.ipify.org 2>/dev/null", "r");
+                        char ip[64];
+                        if (fp && fgets(ip, sizeof(ip), fp)) {
+                            ip[strcspn(ip, "\n")] = 0;
+                            mvprintw(7, 10, "Public IP:  %s", ip);
+                            pclose(fp);
                         } else {
-                            attron(COLOR_PAIR(3));
-                            mvprintw(5, 27, "No connection ✗");
-                            attroff(COLOR_PAIR(3));
+                            mvprintw(7, 10, "Public IP:  Unknown (DNS error?)");
                         }
-                        mvprintw(9, 10, "Press any key...");
-                        refresh();
-                        getch();
-                        break;
+
+                    } else {
+                        mvprintw(6, 10, "           ");
+                        attron(COLOR_PAIR(3)); // Красный
+                        mvprintw(5, 27, "No connection ✗");
+                        attroff(COLOR_PAIR(3));
+                        mvprintw(7, 10, "Check your cable or Wi-Fi, bro!");
+                    }
+
+                    mvprintw(10, 10, "Press any key to return...");
+                    refresh();
+                    getch();
+                    break;
+
                     case 7:
                         clear();
                         mvprintw(5, 10, "Starting network sniff...");
