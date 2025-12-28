@@ -16,12 +16,11 @@
 #define BOLD          "\033[1m"
 #define UNDERLINE     "\033[4m"
 
-// information messages
-#define INFO(msg)     printf(COLOR_CYAN "[INFO] " COLOR_RESET "%s\n", msg)
-#define SUCCESS(msg)  printf(COLOR_GREEN BOLD "[SUCCESS] " COLOR_RESET "%s\n", msg)
-#define WARNING(msg)  printf(COLOR_YELLOW "[WARNING] " COLOR_RESET "%s\n", msg)
-#define ERROR(msg)    printf(COLOR_RED BOLD "[ERROR] " COLOR_RESET "%s\n", msg)
-#define DEBUG(msg)    printf(COLOR_MAGENTA "[DEBUG] " COLOR_RESET "%s\n", msg)
+
+#define INFO(msg, ...)    printf(COLOR_CYAN "[INFO] " COLOR_RESET msg "\n", ##__VA_ARGS__)
+#define SUCCESS(msg, ...) printf(COLOR_GREEN BOLD "[SUCCESS] " COLOR_RESET msg "\n", ##__VA_ARGS__)
+#define ERROR(msg, ...)   printf(COLOR_RED "[ERROR] " COLOR_RESET msg "\n", ##__VA_ARGS__)
+#define WARNING(msg, ...) printf(COLOR_YELLOW "[WARNING] " COLOR_RESET msg "\n", ##__VA_ARGS__)
 
 
 #endif
