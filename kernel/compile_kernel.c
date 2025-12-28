@@ -1,3 +1,5 @@
+// this file for compily lainux kernel from mcarchiso
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -7,7 +9,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-// Макросы для цветного вывода
+// macros for colors printf
 #define COLOR_RED     "\033[31m"
 #define COLOR_GREEN   "\033[32m"
 #define COLOR_YELLOW  "\033[33m"
@@ -15,15 +17,14 @@
 #define COLOR_MAGENTA "\033[35m"
 #define COLOR_CYAN    "\033[36m"
 #define COLOR_RESET   "\033[0m"
-
 #define BOLD          "\033[1m"
 
+// information messages
 #define INFO(msg, ...)    printf(COLOR_CYAN "[INFO] " COLOR_RESET msg "\n", ##__VA_ARGS__)
 #define SUCCESS(msg, ...) printf(COLOR_GREEN BOLD "[SUCCESS] " COLOR_RESET msg "\n", ##__VA_ARGS__)
 #define ERROR(msg, ...)   printf(COLOR_RED "[ERROR] " COLOR_RESET msg "\n", ##__VA_ARGS__)
 #define WARNING(msg, ...) printf(COLOR_YELLOW "[WARNING] " COLOR_RESET msg "\n", ##__VA_ARGS__)
 
-// Функция для выполнения команды с захватом вывода
 int execute_command(const char *cmd, char *output, size_t output_size) {
     FILE *pipe = popen(cmd, "r");
     if(!pipe) return -1;
@@ -44,11 +45,9 @@ int execute_command(const char *cmd, char *output, size_t output_size) {
     return pclose(pipe);
 }
 
-// Проверка структуры директории
 bool check_directory_structure() {
     INFO("Checking directory structure...");
 
-    // Проверяем обязательные файлы
     const char *required_files[] = {
         "profiledef.sh",
         "packages.x86_64",
@@ -66,7 +65,6 @@ bool check_directory_structure() {
         }
     }
 
-    // Проверяем структуру
     const char *required_dirs[] = {
         "airootfs",
         "efiboot",
@@ -87,15 +85,15 @@ bool check_directory_structure() {
     return all_ok;
 }
 
-// Создание недостающих файлов
 bool create_missing_files() {
     INFO("Creating missing configuration files...");
 
-    // Проверяем и создаем customize_airootfs.sh если нужно
     if(access("airootfs/root/.automated_script/customize_airootfs.sh", F_OK) != 0) {
+
         system("mkdir -p airootfs/root/.automated_script");
 
         FILE *fp = fopen("airootfs/root/.automated_script/customize_airootfs.sh", "w");
+
         if(fp) {
             fprintf(fp, "#!/usr/bin/env bash\n\n");
             fprintf(fp, "# Minimal customization script\n");
@@ -117,23 +115,21 @@ bool create_missing_files() {
     return true;
 }
 
-// Проверка profiledef.sh на ошибки
 bool validate_profiledef() {
     INFO("Validating profiledef.sh...");
 
-    // Проверяем синтаксис
     int result = system("bash -n profiledef.sh 2>&1");
+
     if(result != 0) {
+
         ERROR("profiledef.sh has syntax errors");
 
-        // Показываем ошибки
         system("bash -n profiledef.sh 2>&1");
 
-        // Предлагаем исправить
         WARNING("Trying to fix profiledef.sh...");
 
-        // Создаем простой profiledef.sh
         FILE *fp = fopen("profiledef.sh", "w");
+
         if(fp) {
             fprintf(fp, "#!/usr/bin/env bash\n\n");
             fprintf(fp, "# Simple profile for testing\n");
@@ -155,7 +151,6 @@ bool validate_profiledef() {
     return true;
 }
 
-// Основная функция сборки с прямой обработкой mkarchiso
 bool run_mkarchiso_direct() {
     INFO("Running mkarchiso directly...");
 
@@ -167,7 +162,6 @@ bool run_mkarchiso_direct() {
 
     printf("Working directory: %s\n", cwd);
 
-    // Подготавливаем команду
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),
              "cd '%s' && "
@@ -176,23 +170,19 @@ bool run_mkarchiso_direct() {
 
     printf("Executing: %s\n\n", cmd);
 
-    // Создаем pipe для чтения вывода
     FILE *pipe = popen(cmd, "r");
     if(!pipe) {
         ERROR("Failed to execute mkarchiso");
         return false;
     }
 
-    // Читаем вывод в реальном времени
     char buffer[1024];
     bool has_errors = false;
     bool build_started = false;
 
     while(fgets(buffer, sizeof(buffer), pipe)) {
-        // Убираем перевод строки
         buffer[strcspn(buffer, "\n")] = 0;
 
-        // Проверяем на ошибки
         if(strstr(buffer, "error:") ||
            strstr(buffer, "ERROR:") ||
            strstr(buffer, "realpath:") ||
@@ -200,27 +190,31 @@ bool run_mkarchiso_direct() {
             ERROR("%s", buffer);
             has_errors = true;
         }
+
         else if(strstr(buffer, "WARNING:")) {
             WARNING("%s", buffer);
         }
+
         else if(strstr(buffer, "INFO:")) {
             INFO("%s", buffer);
         }
         else if(strlen(buffer) > 0) {
-            // Обычный вывод
+
             printf("  %s\n", buffer);
 
-            // Проверяем, началась ли сборка
             if(strstr(buffer, "Installing packages") ||
                strstr(buffer, "Creating")) {
                 build_started = true;
+
             }
+
         }
+
     }
 
     int status = pclose(pipe);
 
-    // Анализируем результат
+    // result analyze
     if(WIFEXITED(status)) {
         int exit_code = WEXITSTATUS(status);
 
@@ -231,7 +225,7 @@ bool run_mkarchiso_direct() {
                 return false;
             }
 
-            // Проверяем наличие ISO
+            // check iso from dir
             if(access("./out", F_OK) == 0) {
                 system("find ./out -name '*.iso' -type f 2>/dev/null");
 
@@ -242,10 +236,10 @@ bool run_mkarchiso_direct() {
                         iso_path[strcspn(iso_path, "\n")] = 0;
                         SUCCESS("\nISO successfully created: %s", iso_path);
 
-                        // Показываем информацию
-                        printf("\n" COLOR_GREEN "╔══════════════════════════════════════════╗\n");
-                        printf(  "║          BUILD SUCCESSFUL!              ║\n");
-                        printf(  "╚══════════════════════════════════════════╝\n" COLOR_RESET);
+
+                        // information
+
+                        printf("thanks you for waiting! build success created\n");
 
                         printf("\nISO file: %s\n", iso_path);
                         system("ls -lh ./out/*.iso");
@@ -271,11 +265,11 @@ bool run_mkarchiso_direct() {
     return false;
 }
 
-// Альтернатива: запуск тестовой сборки
+
 bool run_test_build() {
     INFO("Running test build with simplified configuration...");
 
-    // Создаем временную директорию
+
     char temp_dir[] = "/tmp/test-lainux-XXXXXX";
     if(!mkdtemp(temp_dir)) {
         ERROR("Cannot create temp directory");
@@ -284,27 +278,22 @@ bool run_test_build() {
 
     printf("Test directory: %s\n", temp_dir);
 
-    // Копируем минимальный набор файлов
     char cmd[2048];
 
-    // 1. Копируем profiledef.sh
     snprintf(cmd, sizeof(cmd), "cp profiledef.sh '%s/'", temp_dir);
     system(cmd);
 
-    // 2. Создаем минимальный packages.x86_64
     snprintf(cmd, sizeof(cmd),
              "echo 'linux\nlinux-firmware\nbase\nbash' > '%s/packages.x86_64'",
              temp_dir);
     system(cmd);
 
-    // 3. Создаем минимальную структуру
     snprintf(cmd, sizeof(cmd), "mkdir -p '%s/airootfs/root/.automated_script'", temp_dir);
     system(cmd);
 
     snprintf(cmd, sizeof(cmd), "mkdir -p '%s/efiboot' '%s/syslinux'", temp_dir, temp_dir);
     system(cmd);
 
-    // 4. Создаем минимальный customize_airootfs.sh
     snprintf(cmd, sizeof(cmd),
              "echo '#!/bin/bash\necho test' > '%s/airootfs/root/.automated_script/customize_airootfs.sh'",
              temp_dir);
@@ -312,7 +301,7 @@ bool run_test_build() {
     snprintf(cmd, sizeof(cmd), "chmod +x '%s/airootfs/root/.automated_script/customize_airootfs.sh'", temp_dir);
     system(cmd);
 
-    // 5. Запускаем mkarchiso
+    // mkarchiso
     printf("\nStarting test build...\n");
     snprintf(cmd, sizeof(cmd),
              "cd '%s' && "
@@ -328,7 +317,7 @@ bool run_test_build() {
         int result = pclose(pipe);
 
         if(result == 0) {
-            // Проверяем ISO
+            // check ISO
             snprintf(cmd, sizeof(cmd), "find '%s/out' -name '*.iso' -type f 2>/dev/null", temp_dir);
             FILE *find_iso = popen(cmd, "r");
             if(find_iso) {
@@ -336,13 +325,13 @@ bool run_test_build() {
                 if(fgets(iso_path, sizeof(iso_path), find_iso)) {
                     iso_path[strcspn(iso_path, "\n")] = 0;
 
-                    // Копируем ISO обратно
+                    // copy ISO back
                     snprintf(cmd, sizeof(cmd), "cp '%s' ./", iso_path);
                     system(cmd);
 
                     SUCCESS("\nTest build successful! ISO copied to current directory");
 
-                    // Очистка
+                    // clean
                     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", temp_dir);
                     system(cmd);
 
@@ -353,17 +342,16 @@ bool run_test_build() {
         }
     }
 
-    // Очистка
+    // clean
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", temp_dir);
     system(cmd);
 
     return false;
 }
 
-// Основная функция
 int main() {
-    printf("Lainux ISO Builder v1.4\n");
-    printf("=======================\n\n");
+    printf("Lainux ISO creator\n");
+    printf("*********************\n\n");
 
     int choice;
     printf("1. Build ISO (standard)\n");
@@ -381,17 +369,17 @@ int main() {
 
     switch(choice) {
         case 1:
-            // Проверяем структуру
+            // check struct
             if(!check_directory_structure()) {
                 ERROR("Directory structure check failed");
                 printf("\nTry running option 3 first to fix configuration.\n");
                 return EXIT_FAILURE;
             }
 
-            // Создаем недостающие файлы
+            // create missing file
             create_missing_files();
 
-            // Валидируем profiledef.sh
+            // vadilate
             validate_profiledef();
 
             // Очищаем
@@ -433,7 +421,7 @@ int main() {
     } else {
         printf("\n" COLOR_RED "✗ Operation failed!" COLOR_RESET "\n");
 
-        // Рекомендации
+        // recommendations
         printf("\n" COLOR_YELLOW "Recommended next steps:" COLOR_RESET "\n");
         printf("1. Check profiledef.sh for syntax errors:\n");
         printf("   bash -n profiledef.sh\n\n");
