@@ -1,585 +1,714 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+// ---------- Localization ----------
 type Phrases struct {
-	Title            string
-	WelcomeTitle     string
-	WelcomeSubtitle  string
-	SystemInfo       string
-	Arch             string
-	Network          string
-	Online           string
-	Offline          string
-	StartInstall     string
-	Back             string
-	Quit             string
-	Next             string
+	Title                string
+	Logo                 string
+	VersionLine          string
+	SystemTime           string
+	Navigation           string
+	Arch                 string
+	Kernel               string
+	ExitConfirm          string
+	ExitAction           string
 
-	DiskTitle        string
-	NoDisks          string
-	SizeLabel        string
-	DiskType         string
-	DiskVendor       string
-	DiskModel        string
-	DiskPartitions   string
-	PartCount        string
-	SelDisk          string
+	// Menu
+	MenuItems [9]string
 
-	NetStatus        string
-	QemuDetect       string
-	Options          string
-	Timezone         string
-	Hostname         string
-	RootPassword     string
-	Swap             string
-	Filesystem       string
-	SSHServer        string
-	GuestAgent       string
-	CheckNet         string
-	LangToggle       string
-	Ready            string
-	Enabled          string
-	Disabled         string
+	// Hardware info
+	HardwareTitle    string
+	SystemOverview   string
+	HostnameLabel    string
+	ArchLabel        string
+	KernelLabel      string
+	CPUInfo          string
+	CPUCores         string
+	Memory           string
+	Graphics         string
+	Advanced         string
+	VirtSupport      string
+	VirtNotAvailable string
+	FirmwareUEFI     string
+	FirmwareBIOS     string
+	UptimeLabel      string
+	LoadAvgLabel     string
+
+	// Requirements
+	RequirementsTitle    string
+	RAMWarning           string
+	CPUWarning           string
+	DiskSpaceWarning     string
+	MeetsRequirements    string
+	MayNotPerform        string
+
+	// Disk selection
+	NoDisksFound         string
+
+	// VM
+	VMTitle              string
+	VMRequirements       string
+
+	// Config
+	ConfigTitle          string
+	ConfigSaved          string
+
+	// Network
+	NetworkChecking      string
+	NetworkConnected     string
+	NetworkOffline       string
+	PublicIP             string
+	NoInterface          string
+
+	// Common
+	PressAnyKey          string
+	Back                 string
+	Quit                 string
 }
 
-var loc = map[string]Phrases{
+var phrases = map[string]Phrases{
 	"EN": {
-		Title: "LAINUXOS INSTALLER",
-		WelcomeTitle: "LainuxOS",
-		WelcomeSubtitle: "A minimal, modern Linux distribution",
-		SystemInfo: "System Information",
-		Arch: "Architecture",
-		Network: "Network",
-		Online: "Online",
-		Offline: "Offline",
-		StartInstall: "Start Install",
-		Back: "b: Back",
-		Quit: "q: Quit",
-		Next: "Enter: Next",
+		Title:       "LAINUXOS INSTALLER",
+		Logo:        "LainuxOS",
+		VersionLine: "Version v0.3 | UEFI Ready | Secure Boot Compatible",
+		SystemTime:  "System time",
+		Navigation:  "Navigate: ↑ ↓ • Select: Enter • Exit: q",
+		Arch:        "Arch",
+		Kernel:      "Kernel",
+		ExitConfirm: "Exit Lainux installer?",
+		ExitAction:  "EXIT",
 
-		DiskTitle: "Select Target Disk",
-		NoDisks: "No usable disks found",
-		SizeLabel: "Size",
-		DiskType: "Type",
-		DiskVendor: "Vendor",
-		DiskModel: "Model",
-		DiskPartitions: "Partitions",
-		PartCount: "partitions",
-		SelDisk: "Selected Disk",
+		MenuItems: [9]string{
+			"Install on Hardware",
+			"Install on Virtual Machine",
+			"Hardware Information",
+			"System Requirements Check",
+			"Configuration Selection",
+			"View Disk Information",
+			"Check Network",
+			"Network Diagnostics",
+			"Exit Installer",
+		},
 
-		NetStatus: "Net",
-		QemuDetect: "QEMU",
-		Options: "Configuration Options",
-		Timezone: "Timezone",
-		Hostname: "Hostname",
-		RootPassword: "Show Root Password",
-		Swap: "Swap",
-		Filesystem: "Filesystem",
-		SSHServer: "SSH Server",
-		GuestAgent: "QEMU Guest Agent",
-		CheckNet: "Check Net",
-		LangToggle: "Language",
-		Ready: "READY TO INSTALL ON",
-		Enabled: "ON",
-		Disabled: "OFF",
+		HardwareTitle:    "HARDWARE INFORMATION",
+		SystemOverview:   "System Overview",
+		HostnameLabel:    "Hostname",
+		ArchLabel:        "Architecture",
+		KernelLabel:      "Kernel",
+		CPUInfo:          "CPU",
+		CPUCores:         "Cores",
+		Memory:           "Memory",
+		Graphics:         "Graphics",
+		Advanced:         "Advanced",
+		VirtSupport:      "Virtualization: Supported",
+		VirtNotAvailable: "Virtualization: Not available",
+		FirmwareUEFI:     "Firmware: UEFI",
+		FirmwareBIOS:     "Firmware: Legacy BIOS",
+		UptimeLabel:      "Uptime",
+		LoadAvgLabel:     "Load avg",
+
+		RequirementsTitle:    "SYSTEM REQUIREMENTS CHECK",
+		RAMWarning:           "WARNING: Minimum 1GB RAM recommended",
+		CPUWarning:           "WARNING: Dual-core CPU recommended",
+		DiskSpaceWarning:     "WARNING: At least 2GB free space required in /tmp",
+		MeetsRequirements:    "✓ System meets minimum requirements",
+		MayNotPerform:        "⚠ System may not perform optimally",
+
+		NoDisksFound:         "No suitable disks found. Please check connections.",
+
+		VMTitle:              "VIRTUAL MACHINE INSTALLATION",
+		VMRequirements:       "Requirements:\n- KVM or virtualization support\n- 20GB free disk space\n- 4GB RAM\n- Internet connection",
+
+		ConfigTitle:          "SELECT CONFIGURATION",
+		ConfigSaved:          "Configuration saved to lainux-config.txt",
+
+		NetworkChecking:      "Checking network...",
+		NetworkConnected:     "Connected ✓",
+		NetworkOffline:       "No connection ✗",
+		PublicIP:             "Public IP",
+		NoInterface:          "No active interface found",
+
+		PressAnyKey:          "Press any key to continue...",
+		Back:                 "b: Back",
+		Quit:                 "q: Quit",
 	},
 	"RU": {
-		Title: "УСТАНОВЩИК LAINUXOS",
-		WelcomeTitle: "LainuxOS",
-		WelcomeSubtitle: "Минималистичный и современный дистрибутив Linux",
-		SystemInfo: "Системная информация",
-		Arch: "Архитектура",
-		Network: "Сеть",
-		Online: "В сети",
-		Offline: "Нет сети",
-		StartInstall: "Начать установку",
-		Back: "b: Назад",
-		Quit: "q: Выход",
-		Next: "Enter: Далее",
+		Title:       "УСТАНОВЩИК LAINUXOS",
+		Logo:        "LainuxOS",
+		VersionLine: "Версия v0.3 | Готов к работе с UEFI | Поддержка Secure Boot",
+		SystemTime:  "Системное время",
+		Navigation:  "Навигация: ↑ ↓ • Выбор: Enter • Выход: q",
+		Arch:        "Архитектура",
+		Kernel:      "Ядро",
+		ExitConfirm: "Выйти из установщика Lainux?",
+		ExitAction:  "ВЫХОД",
 
-		DiskTitle: "Выберите диск",
-		NoDisks: "Подходящие диски не найдены",
-		SizeLabel: "Размер",
-		DiskType: "Тип",
-		DiskVendor: "Производитель",
-		DiskModel: "Модель",
-		DiskPartitions: "Разделы",
-		PartCount: "разделов",
-		SelDisk: "Выбранный диск",
+		MenuItems: [9]string{
+			"Установить на оборудование",
+			"Установить в виртуальную машину",
+			"Информация об оборудовании",
+			"Проверка системных требований",
+			"Выбор конфигурации",
+			"Информация о дисках",
+			"Проверить сеть",
+			"Диагностика сети",
+			"Выйти из установщика",
+		},
 
-		NetStatus: "Сеть",
-		QemuDetect: "QEMU",
-		Options: "Настройки конфигурации",
-		Timezone: "Часовой пояс",
-		Hostname: "Имя хоста",
-		RootPassword: "Показать пароль root",
-		Swap: "Раздел подкачки",
-		Filesystem: "Файловая система",
-		SSHServer: "SSH-сервер",
-		GuestAgent: "QEMU Guest Agent",
-		CheckNet: "Проверить сеть",
-		LangToggle: "Язык",
-		Ready: "ГОТОВ К УСТАНОВКЕ НА",
-		Enabled: "ВКЛ",
-		Disabled: "ВЫКЛ",
+		HardwareTitle:    "ИНФОРМАЦИЯ ОБ ОБОРУДОВАНИИ",
+		SystemOverview:   "Обзор системы",
+		HostnameLabel:    "Имя хоста",
+		ArchLabel:        "Архитектура",
+		KernelLabel:      "Ядро",
+		CPUInfo:          "Процессор",
+		CPUCores:         "Ядра",
+		Memory:           "Память",
+		Graphics:         "Графика",
+		Advanced:         "Дополнительно",
+		VirtSupport:      "Виртуализация: Поддерживается",
+		VirtNotAvailable: "Виртуализация: Недоступна",
+		FirmwareUEFI:     "Прошивка: UEFI",
+		FirmwareBIOS:     "Прошивка: Legacy BIOS",
+		UptimeLabel:      "Время работы",
+		LoadAvgLabel:     "Средняя нагрузка",
+
+		RequirementsTitle:    "ПРОВЕРКА СИСТЕМНЫХ ТРЕБОВАНИЙ",
+		RAMWarning:           "ВНИМАНИЕ: Рекомендуется минимум 1 ГБ ОЗУ",
+		CPUWarning:           "ВНИМАНИЕ: Рекомендуется двухъядерный процессор",
+		DiskSpaceWarning:     "ВНИМАНИЕ: Требуется минимум 2 ГБ свободного места в /tmp",
+		MeetsRequirements:    "✓ Система соответствует минимальным требованиям",
+		MayNotPerform:        "⚠ Система может работать нестабильно",
+
+		NoDisksFound:         "Подходящие диски не найдены. Проверьте подключение.",
+
+		VMTitle:              "УСТАНОВКА ВИРТУАЛЬНОЙ МАШИНЫ",
+		VMRequirements:       "Требования:\n- Поддержка KVM или виртуализации\n- 20 ГБ свободного места\n- 4 ГБ ОЗУ\n- Подключение к интернету",
+
+		ConfigTitle:          "ВЫБЕРИТЕ КОНФИГУРАЦИЮ",
+		ConfigSaved:          "Конфигурация сохранена в lainux-config.txt",
+
+		NetworkChecking:      "Проверка сети...",
+		NetworkConnected:     "Подключено ✓",
+		NetworkOffline:       "Нет подключения ✗",
+		PublicIP:             "Публичный IP",
+		NoInterface:          "Активный интерфейс не найден",
+
+		PressAnyKey:          "Нажмите любую клавишу для продолжения...",
+		Back:                 "b: Назад",
+		Quit:                 "q: Выход",
 	},
 }
 
+// ---------- Styles ----------
 var (
-	docStyle     = lipgloss.NewStyle().Margin(1, 2)
 	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#cba6f7"))
-	subTitleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#89b4fa"))
-	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1"))
-	activeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1"))
-	warningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8"))
+	greenStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#a6e3a1"))
+	redStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#f38ba8"))
 	hintStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086"))
-	centerStyle  = lipgloss.NewStyle().Padding(1, 2)
+	docStyle     = lipgloss.NewStyle().Margin(1, 2)
 )
 
-type DiskInfo struct {
-	Device     string
-	Size       string
-	Type       string
-	Vendor     string
-	Model      string
-	Partitions int
-}
-
-type diskItem struct {
-	info DiskInfo
-}
-
-func (d diskItem) Title() string       { return d.info.Device }
-func (d diskItem) Description() string { return "" }
-func (d diskItem) FilterValue() string { return d.info.Device }
-
+// ---------- Types ----------
 type step int
 
 const (
-	welcomeStep step = iota
-	diskStep
-	optionsStep
-	summaryStep
+	stepWelcome step = iota
+	stepMenu
+	stepSelectDisk
+	stepInstallHardware
+	stepInstallVM
+	stepHardwareInfo
+	stepRequirements
+	stepConfig
+	stepDiskInfo
+	stepNetworkCheck
+	stepNetworkDiag
+	stepExitConfirm
 )
 
 type model struct {
-	list            list.Model
-	spinner         spinner.Model
-	choice          DiskInfo
-	currentStep     step
-	online          bool
-	isQEMU          bool
-	installGuest    bool
-	installSSH      bool
-	enableSwap      bool
-	showRootPass    bool
-	timezone        string
-	hostname        string
-	filesystem      string
-	lang            string // "EN" or "RU"
+	currentStep    step
+	menuIndex      int
+	selectedDisk   string
+	diskSize       string
+	diskModel      string
+	lang           string
+	networkOnline  bool
+	publicIP       string
+	userInput      string
 }
 
-type checkNetMsg bool
-
+// ---------- Helpers ----------
 func normalizeKey(k string) string {
 	switch k {
 	case "й", "Й", "q", "Q": return "q"
 	case "б", "Б", "b", "B": return "b"
-	case "г", "Г", "g", "G": return "g"
-	case "т", "Т", "t", "T": return "t"
-	case "ш", "Ш", "i", "I": return "i"
+	case "у", "У", "y", "Y": return "y"
+	case "н", "Н", "n", "N": return "n"
 	case "д", "Д", "l", "L": return "l"
-	case "с", "С", "s", "S": return "s"
-	case "ы", "Ы", "h", "H": return "h"
-	case "а", "А", "a", "A": return "a"
-	case "ф", "Ф", "f", "F": return "f"
-	case "п", "П", "p", "P": return "p"
-	case "enter", "ctrl+c": return k
+	case "enter", "\r", "\n": return "enter"
+	case "esc": return "esc"
+	case "up", "down": return k
 	default: return strings.ToLower(k)
 	}
 }
 
-func checkInternet() tea.Cmd {
-	return func() tea.Msg {
-		endpoints := []string{"https://1.1.1.1", "https://8.8.8.8", "https://google.com/generate_204"}
-		client := &http.Client{Timeout: 3 * time.Second}
-		for _, url := range endpoints {
-			if resp, err := client.Get(url); err == nil {
-				resp.Body.Close()
-				return checkNetMsg(true)
-			}
-		}
-		return checkNetMsg(false)
-	}
+func runCommand(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
-func detectDiskType(name string) string {
-	if strings.HasPrefix(name, "loop") {
-		return "loop"
-	}
-	if strings.HasPrefix(name, "nvme") {
-		return "NVMe SSD"
-	}
-	if strings.HasPrefix(name, "sd") || strings.HasPrefix(name, "hd") {
-		rotPath := fmt.Sprintf("/sys/block/%s/queue/rotational", name)
-		data, err := os.ReadFile(rotPath)
-		if err == nil {
-			if strings.TrimSpace(string(data)) == "1" {
-				return "HDD"
-			}
-			return "SATA SSD"
-		}
-	}
-	return "Unknown"
-}
+func getHardwareInfo() map[string]string {
+	info := make(map[string]string)
 
-func getDisks() []list.Item {
-	cmd := exec.Command("lsblk", "-d", "-o", "NAME,SIZE,TRAN,VENDOR,MODEL", "-n", "-P")
-	out, err := cmd.Output()
-	if err != nil {
-		return []list.Item{diskItem{info: DiskInfo{Device: "ERROR", Size: "lsblk failed"}}}
+	hostname, _ := os.Hostname()
+	info["hostname"] = hostname
+
+	if out, _ := runCommand("uname", "-m"); out != "" {
+		info["arch"] = strings.TrimSpace(out)
+	}
+	if out, _ := runCommand("uname", "-r"); out != "" {
+		info["kernel"] = strings.Split(strings.TrimSpace(out), "-")[0]
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	var items []list.Item
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		props := make(map[string]string)
-		fields := strings.Split(line, " ")
-		for _, f := range fields {
-			f = strings.TrimSpace(f)
-			if f == "" {
-				continue
-			}
-			if kv := strings.SplitN(f, "=", 2); len(kv) == 2 {
-				key := kv[0]
-				val := strings.Trim(kv[1], `"`)
-				props[key] = val
+	if out, _ := runCommand("lscpu"); out != "" {
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "Model name") {
+				info["cpu"] = strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+				break
 			}
 		}
+	}
+	if info["cpu"] == "" {
+		if out, _ := runCommand("grep", "model name", "/proc/cpuinfo"); out != "" {
+			lines := strings.Split(out, "\n")
+			if len(lines) > 0 {
+				info["cpu"] = strings.TrimSpace(strings.SplitN(lines[0], ":", 2)[1])
+			}
+		}
+	}
 
-		name := props["NAME"]
-		if name == "" {
-			continue
-		}
-		// Skip optical, rom, cdrom
-		if strings.Contains(name, "sr") || strings.Contains(name, "rom") || strings.HasPrefix(name, "loop") {
-			continue
-		}
+	info["cores"] = strconv.Itoa(runtime.NumCPU())
 
-		size := props["SIZE"]
-		vendor := props["VENDOR"]
-		model := props["MODEL"]
-		if model == "" {
-			model = "Generic"
+	if out, _ := runCommand("free", "-h"); out != "" {
+		lines := strings.Split(out, "\n")
+		if len(lines) > 1 {
+			fields := strings.Fields(lines[1])
+			if len(fields) > 1 {
+				info["ram"] = fields[1]
+			}
 		}
-		if vendor == "" {
-			vendor = "Unknown"
-		}
+	}
 
-		// Count partitions
-		partCount := 0
-		if partOut, err := exec.Command("lsblk", "-n", "-o", "NAME").CombinedOutput(); err == nil {
-			partLines := strings.Split(string(partOut), "\n")
-			for _, pl := range partLines {
-				pl = strings.TrimSpace(pl)
-				if strings.HasPrefix(pl, name) && pl != name && len(pl) > len(name) {
-					partCount++
+	if out, _ := runCommand("lspci"); out != "" {
+		for _, line := range strings.Split(out, "\n") {
+			l := strings.ToLower(line)
+			if strings.Contains(l, "vga") || strings.Contains(l, "3d") || strings.Contains(l, "display") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					info["gpu"] = strings.TrimSpace(parts[1])
+					break
 				}
 			}
 		}
-
-		diskType := detectDiskType(name)
-
-		items = append(items, diskItem{
-			info: DiskInfo{
-				Device:     "/dev/" + name,
-				Size:       size,
-				Type:       diskType,
-				Vendor:     vendor,
-				Model:      model,
-				Partitions: partCount,
-			},
-		})
 	}
 
-	if len(items) == 0 {
-		return []list.Item{diskItem{info: DiskInfo{Device: "NO DISKS", Size: "None detected"}}}
+	if out, _ := runCommand("uptime", "-p"); out != "" {
+		info["uptime"] = strings.TrimSpace(out)
+	} else if out, _ := runCommand("uptime"); out != "" {
+		info["uptime"] = strings.TrimSpace(out)
 	}
-	return items
+
+	if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+		parts := strings.Fields(string(data))
+		if len(parts) >= 3 {
+			info["load"] = parts[0] + " " + parts[1] + " " + parts[2]
+		}
+	}
+
+	if _, err := os.Stat("/sys/firmware/efi"); err == nil {
+		info["firmware"] = "uefi"
+	} else {
+		info["firmware"] = "bios"
+	}
+
+	if out, _ := runCommand("grep", "-E", "(vmx|svm)", "/proc/cpuinfo"); out != "" {
+		info["virt"] = "supported"
+	} else {
+		info["virt"] = "none"
+	}
+
+	return info
 }
 
-func initialModel() model {
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = activeStyle
-
-	delegate := list.NewDefaultDelegate()
-	// delegate.Width not a field — removed
-	l := list.New([]list.Item{}, delegate, 0, 0)
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
-
-	data, _ := os.ReadFile("/proc/cpuinfo")
-	qemu := strings.Contains(string(data), "QEMU") || strings.Contains(string(data), "KVM")
-
-	return model{
-		list:         l,
-		spinner:      s,
-		isQEMU:       qemu,
-		timezone:     "UTC",
-		hostname:     "lainux",
-		filesystem:   "ext4",
-		lang:         "EN",
-		currentStep:  welcomeStep,
+func getDisks() []map[string]string {
+	out, err := exec.Command("lsblk", "-d", "-o", "NAME,SIZE,MODEL", "-n").Output()
+	if err != nil {
+		return nil
 	}
+	var disks []map[string]string
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			name := fields[0]
+			if strings.Contains(name, "sr") || strings.HasPrefix(name, "loop") {
+				continue
+			}
+			size := fields[1]
+			model := strings.Join(fields[2:], " ")
+			if model == "" {
+				model = "Unknown"
+			}
+			disks = append(disks, map[string]string{
+				"name":  name,
+				"size":  size,
+				"model": model,
+			})
+		}
+	}
+	return disks
+}
+
+func checkNetwork() (bool, string) {
+	conn, err := net.DialTimeout("tcp", "1.1.1.1:53", 3*time.Second)
+	if err != nil {
+		return false, ""
+	}
+	conn.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://api.ipify.org")
+	if err != nil {
+		return true, ""
+	}
+	defer resp.Body.Close()
+	ip, _ := bufio.NewReader(resp.Body).ReadString('\n')
+	return true, strings.TrimSpace(ip)
+}
+
+func (m model) View() string {
+	p := phrases[m.lang]
+
+	switch m.currentStep {
+	case stepWelcome:
+		logo := titleStyle.Render(p.Logo)
+		version := p.VersionLine
+		now := time.Now().Format("2006-01-02 15:04:05")
+		timeLine := fmt.Sprintf("%s: %s", p.SystemTime, now)
+		start := greenStyle.Render("• Start Installation")
+		return docStyle.Render(fmt.Sprintf("\n%s\n\n%s\n\n%s\n\n%s\n\n%s", logo, version, timeLine, start, hintStyle.Render("Press Enter to begin")))
+
+	case stepMenu:
+		var menu []string
+		for i, item := range p.MenuItems {
+			if i == m.menuIndex {
+				menu = append(menu, greenStyle.Render("→ "+item))
+			} else {
+				menu = append(menu, "  "+item)
+			}
+		}
+		info := getHardwareInfo()
+		footer := fmt.Sprintf("%s | %s: %s | %s: %s", p.Navigation, p.Arch, info["arch"], p.Kernel, info["kernel"])
+		return docStyle.Render(fmt.Sprintf("%s\n\n%s\n\n%s", titleStyle.Render(p.Title), strings.Join(menu, "\n"), hintStyle.Render(footer)))
+
+	case stepSelectDisk:
+		disks := getDisks()
+		if len(disks) == 0 {
+			return docStyle.Render(redStyle.Render(p.NoDisksFound))
+		}
+		var lines []string
+		for i, disk := range disks {
+			mark := "  "
+			if i == m.menuIndex%len(disks) {
+				mark = "→ "
+			}
+			lines = append(lines, fmt.Sprintf("%s/dev/%s (%s) — %s", mark, disk["name"], disk["size"], disk["model"]))
+		}
+		return docStyle.Render(fmt.Sprintf("%s\n\n%s\n\n%s", titleStyle.Render("Select Target Disk"), strings.Join(lines, "\n"), hintStyle.Render("Enter: Select | b: Back")))
+
+	case stepInstallHardware:
+		return docStyle.Render(fmt.Sprintf("%s\n\n%s\n\n%s",
+			titleStyle.Render("Installation Summary"),
+			fmt.Sprintf("Target: /dev/%s (%s %s)", m.selectedDisk, m.diskSize, m.diskModel),
+			hintStyle.Render("Hardware installation simulated. Press 'b' to go back.")))
+
+	case stepInstallVM:
+		return docStyle.Render(fmt.Sprintf("%s\n\n%s\n\n%s",
+			titleStyle.Render(p.VMTitle),
+			p.VMRequirements,
+			hintStyle.Render("VM setup simulated. Press 'b' to go back.")))
+
+	case stepHardwareInfo:
+		info := getHardwareInfo()
+		lines := []string{
+			titleStyle.Render(p.HardwareTitle),
+			"",
+			p.SystemOverview + ":",
+			fmt.Sprintf("  %s: %s", p.HostnameLabel, info["hostname"]),
+			fmt.Sprintf("  %s: %s", p.ArchLabel, info["arch"]),
+			fmt.Sprintf("  %s: %s", p.KernelLabel, info["kernel"]),
+			"",
+			p.CPUInfo + ":",
+			fmt.Sprintf("  %s", info["cpu"]),
+			fmt.Sprintf("  %s: %s", p.CPUCores, info["cores"]),
+			"",
+			p.Memory + ":",
+			fmt.Sprintf("  %s", info["ram"]),
+			"",
+			p.Graphics + ":",
+			fmt.Sprintf("  %s", info["gpu"]),
+			"",
+			p.Advanced + ":",
+			fmt.Sprintf("  %s", func() string {
+				if info["virt"] == "supported" {
+					return p.VirtSupport
+				}
+				return p.VirtNotAvailable
+			}()),
+			fmt.Sprintf("  %s", func() string {
+				if info["firmware"] == "uefi" {
+					return p.FirmwareUEFI
+				}
+				return p.FirmwareBIOS
+			}()),
+			fmt.Sprintf("  %s: %s", p.UptimeLabel, info["uptime"]),
+			fmt.Sprintf("  %s: %s", p.LoadAvgLabel, info["load"]),
+		}
+		return docStyle.Render(strings.Join(lines, "\n") + "\n\n" + hintStyle.Render(p.PressAnyKey))
+
+	case stepRequirements:
+		info := getHardwareInfo()
+		var warnings []string
+		ram := info["ram"]
+		if strings.HasSuffix(ram, "G") {
+			if val, err := strconv.ParseFloat(strings.TrimSuffix(ram, "G"), 64); err == nil && val < 1 {
+				warnings = append(warnings, p.RAMWarning)
+			}
+		} else if strings.HasSuffix(ram, "M") {
+			warnings = append(warnings, p.RAMWarning)
+		}
+		cores, _ := strconv.Atoi(info["cores"])
+		if cores < 2 {
+			warnings = append(warnings, p.CPUWarning)
+		}
+		status := p.MeetsRequirements
+		if len(warnings) > 0 {
+			status = p.MayNotPerform
+		}
+		lines := []string{
+			titleStyle.Render(p.RequirementsTitle),
+			fmt.Sprintf("RAM: %s", info["ram"]),
+			fmt.Sprintf("Cores: %s", info["cores"]),
+			"",
+		}
+		for _, w := range warnings {
+			lines = append(lines, redStyle.Render("⚠ "+w))
+		}
+		lines = append(lines, "", greenStyle.Render(status))
+		return docStyle.Render(strings.Join(lines, "\n") + "\n\n" + hintStyle.Render(p.PressAnyKey))
+
+	case stepConfig:
+		os.WriteFile("lainux-config.txt", []byte("# Configuration saved\nType=minimal"), 0644)
+		return docStyle.Render(fmt.Sprintf("%s\n\n%s\n\n%s",
+			titleStyle.Render(p.ConfigTitle),
+			greenStyle.Render(p.ConfigSaved),
+			hintStyle.Render(p.PressAnyKey)))
+
+	case stepDiskInfo:
+		disks := getDisks()
+		if len(disks) == 0 {
+			return docStyle.Render(p.NoDisksFound)
+		}
+		var lines []string
+		for _, d := range disks {
+			lines = append(lines, fmt.Sprintf("/dev/%s (%s) — %s", d["name"], d["size"], d["model"]))
+		}
+		return docStyle.Render(fmt.Sprintf("%s\n\n%s\n\n%s",
+			titleStyle.Render("Disk Information"),
+			strings.Join(lines, "\n"),
+			hintStyle.Render(p.PressAnyKey)))
+
+	case stepNetworkCheck:
+		status := p.NetworkOffline
+		style := redStyle
+		if m.networkOnline {
+			status = p.NetworkConnected
+			style = greenStyle
+		}
+		ipLine := ""
+		if m.networkOnline && m.publicIP != "" {
+			ipLine = fmt.Sprintf("\n  %s: %s", p.PublicIP, m.publicIP)
+		}
+		return docStyle.Render(fmt.Sprintf("%s\n\n  %s\n  %s%s\n\n%s",
+			titleStyle.Render("Network Status"),
+			p.NetworkChecking,
+			style.Render(status),
+			ipLine,
+			hintStyle.Render(p.PressAnyKey)))
+
+	case stepNetworkDiag:
+		out, _ := runCommand("ip", "route")
+		if strings.Contains(out, "dev") {
+			fields := strings.Fields(out)
+			for i, f := range fields {
+				if f == "dev" && i+1 < len(fields) {
+					return docStyle.Render(fmt.Sprintf("Active interface: %s\n\n%s", fields[i+1], hintStyle.Render(p.PressAnyKey)))
+				}
+			}
+		}
+		return docStyle.Render(redStyle.Render(p.NoInterface) + "\n\n" + hintStyle.Render(p.PressAnyKey))
+
+	case stepExitConfirm:
+		return docStyle.Render(fmt.Sprintf("%s\n\n%s\n\n%s (%s): %s",
+			p.ExitConfirm,
+			hintStyle.Render("Type to confirm:"),
+			p.ExitAction,
+			p.Quit,
+			m.userInput))
+	}
+
+	return ""
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(checkInternet(), m.spinner.Tick)
+	return nil
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	p := loc[m.lang]
+	p := phrases[m.lang]
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := normalizeKey(msg.String())
-		switch key {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "l":
-			if m.lang == "EN" {
-				m.lang = "RU"
-			} else {
-				m.lang = "EN"
-			}
-		case "b":
-			if m.currentStep > welcomeStep {
-				m.currentStep--
-			}
-		case "enter":
-			switch m.currentStep {
-			case welcomeStep:
-				m.currentStep = diskStep
-				m.list.SetItems(getDisks())
-				m.list.Title = p.DiskTitle
-			case diskStep:
-				if i, ok := m.list.SelectedItem().(diskItem); ok {
-					m.choice = i.info
-					m.currentStep = optionsStep
-				}
-			case optionsStep:
-				m.currentStep = summaryStep
-			}
-		}
 
-		if m.currentStep == optionsStep {
+		switch m.currentStep {
+		case stepWelcome:
+			if key == "enter" {
+				m.currentStep = stepMenu
+			} else if key == "q" || key == "esc" {
+				m.currentStep = stepExitConfirm
+				m.userInput = ""
+			}
+
+		case stepMenu:
 			switch key {
-			case "g":
-				if m.isQEMU {
-					m.installGuest = !m.installGuest
+			case "l":
+				m.lang = "RU"
+				if m.lang == "RU" {
+					m.lang = "EN"
 				}
-			case "s":
-				m.installSSH = !m.installSSH
-			case "a":
-				m.enableSwap = !m.enableSwap
-			case "p":
-				m.showRootPass = !m.showRootPass
-			case "f":
-				if m.filesystem == "ext4" {
-					m.filesystem = "btrfs"
+				// Toggle
+				if m.lang == "EN" {
+					m.lang = "RU"
 				} else {
-					m.filesystem = "ext4"
+					m.lang = "EN"
 				}
-			case "h":
-				hostnames := []string{"lainux", "desktop", "workstation", "server"}
-				for i, h := range hostnames {
-					if h == m.hostname {
-						m.hostname = hostnames[(i+1)%len(hostnames)]
-						break
-					}
+			case "q", "esc":
+				m.currentStep = stepExitConfirm
+				m.userInput = ""
+			case "up":
+				m.menuIndex = (m.menuIndex - 1 + 9) % 9
+			case "down":
+				m.menuIndex = (m.menuIndex + 1) % 9
+			case "enter":
+				switch m.menuIndex {
+				case 0:
+					m.currentStep = stepSelectDisk
+				case 1:
+					m.currentStep = stepInstallVM
+				case 2:
+					m.currentStep = stepHardwareInfo
+				case 3:
+					m.currentStep = stepRequirements
+				case 4:
+					m.currentStep = stepConfig
+				case 5:
+					m.currentStep = stepDiskInfo
+				case 6:
+					m.currentStep = stepNetworkCheck
+				case 7:
+					m.currentStep = stepNetworkDiag
+				case 8:
+					m.currentStep = stepExitConfirm
+					m.userInput = ""
 				}
-			case "t":
-				zones := []string{"UTC", "GMT", "MSK", "PST", "EST", "CET"}
-				for i, z := range zones {
-					if z == m.timezone {
-						m.timezone = zones[(i+1)%len(zones)]
-						break
-					}
+			}
+
+		case stepSelectDisk:
+			if key == "b" {
+				m.currentStep = stepMenu
+			} else if key == "q" || key == "esc" {
+				m.currentStep = stepExitConfirm
+				m.userInput = ""
+			} else if key == "enter" {
+				disks := getDisks()
+				if len(disks) > 0 {
+					disk := disks[m.menuIndex%len(disks)]
+					m.selectedDisk = disk["name"]
+					m.diskSize = disk["size"]
+					m.diskModel = disk["model"]
+					m.currentStep = stepInstallHardware
 				}
-			case "i":
-				return m, checkInternet()
+			} else if key == "up" {
+				m.menuIndex--
+				if m.menuIndex < 0 {
+					m.menuIndex = 0
+				}
+			} else if key == "down" {
+				m.menuIndex++
+			}
+
+		case stepInstallHardware, stepInstallVM, stepHardwareInfo, stepRequirements,
+			stepConfig, stepDiskInfo, stepNetworkCheck, stepNetworkDiag:
+			if key == "b" || key == "esc" {
+				m.currentStep = stepMenu
+			} else if key == "q" {
+				m.currentStep = stepExitConfirm
+				m.userInput = ""
+			}
+
+		case stepExitConfirm:
+			if key == "enter" && m.userInput == p.ExitAction {
+				return m, tea.Quit
+			} else if key == "backspace" {
+				if len(m.userInput) > 0 {
+					m.userInput = m.userInput[:len(m.userInput)-1]
+				}
+			} else if key == "esc" {
+				m.currentStep = stepMenu
+			} else if len(key) == 1 && len(m.userInput) < 10 {
+				m.userInput += strings.ToUpper(key)
 			}
 		}
-
-	case checkNetMsg:
-		m.online = bool(msg)
-
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-
-	case tea.WindowSizeMsg:
-		h, v := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width-h, msg.Height-v)
-	}
-
-	if m.currentStep == diskStep {
-		var cmd tea.Cmd
-		m.list, cmd = m.list.Update(msg)
-		return m, cmd
 	}
 
 	return m, nil
 }
 
-func (m model) View() string {
-	p := loc[m.lang]
-
-	netStatus := p.Offline
-	netStyle := warningStyle
-	if m.online {
-		netStatus = p.Online
-		netStyle = activeStyle
+func initialModel() model {
+	online, ip := checkNetwork()
+	return model{
+		currentStep:   stepWelcome,
+		lang:          "EN",
+		networkOnline: online,
+		publicIP:      ip,
 	}
-
-	header := fmt.Sprintf("  %s | %s: %s | QEMU: %v | [l] %s: %s\n\n",
-		titleStyle.Render(p.Title), p.NetStatus, netStyle.Render(netStatus), m.isQEMU, p.LangToggle, m.lang)
-
-	switch m.currentStep {
-	case welcomeStep:
-		sysInfo := fmt.Sprintf(
-			"  %s: %s\n  %s: %s\n  %s: %v",
-			p.Arch, runtime.GOARCH,
-			p.Network, netStyle.Render(netStatus),
-			p.QemuDetect, m.isQEMU,
-		)
-		welcome := centerStyle.Render(
-			titleStyle.Render(p.WelcomeTitle) + "\n\n" +
-				subTitleStyle.Render(p.WelcomeSubtitle) + "\n\n" +
-				titleStyle.Render(p.SystemInfo) + "\n" +
-				infoStyle.Render(sysInfo) + "\n\n" +
-				activeStyle.Render("• "+p.StartInstall) + "\n\n" +
-				hintStyle.Render(fmt.Sprintf("[Enter] %s | [q] %s", p.Next, p.Quit)),
-		)
-		return docStyle.Render(welcome)
-
-	case diskStep:
-		items := m.list.Items()
-		if len(items) == 1 {
-			if d, ok := items[0].(diskItem); ok {
-				if d.info.Device == "NO DISKS" || d.info.Device == "ERROR" {
-					content := header + warningStyle.Render(p.NoDisks)
-					return docStyle.Render(content)
-				}
-			}
-		}
-
-		var lines []string
-		lines = append(lines, header)
-		lines = append(lines, titleStyle.Render(p.DiskTitle)+"\n")
-
-		for i, item := range items {
-			d, ok := item.(diskItem)
-			if !ok {
-				continue
-			}
-			mark := "  "
-			if i == m.list.Index() {
-				mark = "→ "
-			}
-			lines = append(lines, fmt.Sprintf("%s%s", mark, activeStyle.Render(d.info.Device)))
-			lines = append(lines, fmt.Sprintf("    %s: %s", p.SizeLabel, d.info.Size))
-			lines = append(lines, fmt.Sprintf("    %s: %s", p.DiskType, d.info.Type))
-			if d.info.Vendor != "Unknown" {
-				lines = append(lines, fmt.Sprintf("    %s: %s", p.DiskVendor, d.info.Vendor))
-			}
-			if d.info.Model != "Generic" {
-				lines = append(lines, fmt.Sprintf("    %s: %s", p.DiskModel, d.info.Model))
-			}
-			lines = append(lines, fmt.Sprintf("    %s: %d %s", p.DiskPartitions, d.info.Partitions, p.PartCount))
-			lines = append(lines, "")
-		}
-
-		lines = append(lines, hintStyle.Render(fmt.Sprintf("[Enter] %s | [b] %s | [q] %s", p.Next, p.Back, p.Quit)))
-		return docStyle.Render(strings.Join(lines, "\n"))
-
-	case optionsStep:
-		var qemuOpt string
-		if m.isQEMU {
-			status := p.Disabled
-			if m.installGuest {
-				status = activeStyle.Render(p.Enabled)
-			}
-			qemuOpt = fmt.Sprintf("  [g] %s: %s\n", p.GuestAgent, status)
-		}
-
-		sshStatus := p.Disabled
-		if m.installSSH {
-			sshStatus = activeStyle.Render(p.Enabled)
-		}
-
-		swapStatus := p.Disabled
-		if m.enableSwap {
-			swapStatus = activeStyle.Render(p.Enabled)
-		}
-
-		passStatus := p.Disabled
-		if m.showRootPass {
-			passStatus = activeStyle.Render(p.Enabled)
-		}
-
-		content := header + titleStyle.Render(p.Options) + "\n\n"
-		content += fmt.Sprintf("  %s: %s\n", p.SelDisk, activeStyle.Render(m.choice.Device))
-		content += fmt.Sprintf("  %s: %s\n", p.SizeLabel, m.choice.Size)
-		content += fmt.Sprintf("  [t] %s: %s\n", p.Timezone, activeStyle.Render(m.timezone))
-		content += fmt.Sprintf("  [h] %s: %s\n", p.Hostname, activeStyle.Render(m.hostname))
-		content += fmt.Sprintf("  [f] %s: %s\n", p.Filesystem, activeStyle.Render(m.filesystem))
-		content += fmt.Sprintf("  [s] %s: %s\n", p.SSHServer, sshStatus)
-		content += fmt.Sprintf("  [a] %s: %s\n", p.Swap, swapStatus)
-		content += fmt.Sprintf("  [p] %s: %s\n", p.RootPassword, passStatus)
-		content += qemuOpt
-		content += fmt.Sprintf("  [i] %s\n", p.CheckNet)
-		content += "\n  " + hintStyle.Render(fmt.Sprintf("%s | %s | %s", p.Next, p.Back, p.Quit))
-		return docStyle.Render(content)
-
-	case summaryStep:
-		final := header + "\n  " + activeStyle.Bold(true).Render(p.Ready+" "+m.choice.Device) +
-			"\n\n  " + fmt.Sprintf("%s: %s | %s: %s | %s: %s",
-				p.Filesystem, m.filesystem,
-				p.Timezone, m.timezone,
-				p.SSHServer, func() string {
-					if m.installSSH {
-						return p.Enabled
-					}
-					return p.Disabled
-				}()) +
-			"\n\n  " + hintStyle.Render("Press 'q' to exit demo mode.")
-		return docStyle.Render(final)
-	}
-
-	return ""
 }
 
 func main() {
