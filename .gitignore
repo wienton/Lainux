@@ -5,7 +5,6 @@
 *.iso
 
 # binary files
-installer.lain
 
 # ISO build output
 Lainux-iso/

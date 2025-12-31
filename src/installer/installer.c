@@ -233,9 +233,8 @@ void get_system_info(SystemInfo *info) {
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         info->total_ram = si.totalram / (1024 * 1024);
-        info->avail_ram = si.freeram / (1024 * 1024);
-    }
-
+        info->avail_ram = si.freeram / (1024 * 102);
+   }
     // Architecture
     FILE *fp = popen("uname -m", "r");
     if (fp) {
