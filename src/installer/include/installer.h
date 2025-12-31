@@ -40,6 +40,14 @@ typedef struct {
     char kernel[64];
 } SystemInfo;
 
+extern pthread_mutex_t log_mutex;
+
+// // Global variables
+// static WINDOW *log_win;
+// static WINDOW *status_win;
+// static char log_buffer[LOG_BUFFER_SIZE];
+// static volatile int install_running = 0;
+// static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Function prototypes
 void init_ncurses();

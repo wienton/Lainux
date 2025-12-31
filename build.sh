@@ -4,8 +4,11 @@ set -e
 
 BINARY="installer.lain"
 SRC_DIR="src/installer"
+VM_DIR="src/installer/vm"
+SYSTEM_UTILS_DIR="src/installer/system_utils"
 UTILS_DIR="src/utils/network_connection"
 UI_DIR="src/installer/ui"
+DISK_UTILS_DIR="src/installer/disk_utils"
 
 # sources
 SOURCES=(
@@ -13,6 +16,10 @@ SOURCES=(
     "$UTILS_DIR/network_sniffer.c"
     "$UTILS_DIR/network_state.c"
     "$UI_DIR/logo.c"
+    "$VM_DIR/vm.c"
+    "$SYSTEM_UTILS_DIR/log_message.c"
+    "$SYSTEM_UTILS_DIR/run_command.c"
+    "$DISK_UTILS_DIR/disk_info.c"
 )
 
 # dependencies
