@@ -41,6 +41,11 @@
 #include "system_utils/log_message.h"
 #include "system_utils/run_command.h"
 #include "disk_utils/disk_info.h"
+#include "locale/lang.h"
+#include "settings/settings.h"
+
+#define LINK_ISO ""
+#define PACKAGE_LINK ""
 
 // Global variables
 WINDOW *log_win;
@@ -1424,9 +1429,8 @@ void show_summary(const char *disk) {
     int center_x = max_x / 2 - 25;
 
     attron(A_BOLD | COLOR_PAIR(1));
-    mvprintw(2, center_x, "╭────────────────────────────────────────────╮");
-    mvprintw(3, center_x, "│         INSTALLATION COMPLETE              │");
-    mvprintw(4, center_x, "╰────────────────────────────────────────────╯");
+
+    mvprintw(3, center_x, "│         %s   │", _("INSTALL_COMPLETE"));
     attroff(A_BOLD | COLOR_PAIR(1));
 
     mvprintw(6, center_x + 5, "Lainux has been successfully installed!");
@@ -1477,6 +1481,7 @@ void show_summary(const char *disk) {
 
 // Main application
 int main() {
+    select_language();
     // Set up signal handlers
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
@@ -1491,16 +1496,17 @@ int main() {
     int menu_selection = 0;
 
     const char *menu_items[] = {
-        "Install on Hardware",
-        "Install on Virtual Machine",
-        "Hardware Information",
-        "System Requirements Check",
-        "Configuration Selection",
-        "View Disk Information",
-        "Check Network",
-        "Network Diagnostics",
-        "Exit Installer"
+        _("INSTALL_ON_HARDWARE"),
+        _("INSTALL_ON_VM"),
+        _("HARDWARE_INFO"),
+        _("SYSTEM_REQUIREMENTS"),
+        _("CONF_SELECTION"),
+        _("DISK_INFO"),
+        _("NETWORK_CHECK"),
+        _("SETTINGS"),
+        _("EXIT_INSTALLER")
     };
+
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
     int center_x = max_x / 2;
@@ -1702,27 +1708,9 @@ int main() {
 
                     case 7:
                         clear();
-                        mvprintw(5, 10, "Starting network sniff...");
-                        refresh();
+                       print_settings();
 
-                        char* ifname = get_first_active_interface();
-                        if (ifname) {
-                            mvprintw(6, 10, "Interface: %s", ifname);
-                            mvprintw(7, 10, "Sniffing for 5 seconds...");
-                            refresh();
 
-                            int pkts = start_passive_sniff(ifname, 5);
-                            mvprintw(8, 12, "Packets captured: %d", pkts);
-                            free(ifname);
-                        } else {
-                            attron(COLOR_PAIR(3));
-                            mvprintw(6, 10, "No active interface found!");
-                            attroff(COLOR_PAIR(3));
-                        }
-
-                        mvprintw(10, 10, "Press any key...");
-                        refresh();
-                        getch();
                         break;
                     case 8: // Exit
                         if (confirm_action("Exit Lainux installer?", "EXIT")) {

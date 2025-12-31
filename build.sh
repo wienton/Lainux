@@ -9,7 +9,8 @@ SYSTEM_UTILS_DIR="src/installer/system_utils"
 UTILS_DIR="src/utils/network_connection"
 UI_DIR="src/installer/ui"
 DISK_UTILS_DIR="src/installer/disk_utils"
-
+LOCAL_DIR="src/installer/locale"
+SETTING_DIR="src/installer/settings"
 # sources
 SOURCES=(
     "$SRC_DIR/installer.c"
@@ -20,6 +21,10 @@ SOURCES=(
     "$SYSTEM_UTILS_DIR/log_message.c"
     "$SYSTEM_UTILS_DIR/run_command.c"
     "$DISK_UTILS_DIR/disk_info.c"
+    "$LOCAL_DIR/lang.c"
+    "$LOCAL_DIR/ru.c"
+    "$LOCAL_DIR/en.c"
+    "$SETTING_DIR/settings.c"
 )
 
 # dependencies

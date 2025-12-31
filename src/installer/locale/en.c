@@ -1,0 +1,33 @@
+#include <stddef.h>
+
+const char* en_strings[][2] = {
+    {"WELCOME_TITLE", "Lainux Installer"},
+    {"INSTALL_ON_HARDWARE", "Install on Hardware"},
+    {"INSTALL_ON_VM", "Install on Virtual Machine"},
+    {"HARDWARE_INFO", "Hardware Information"},
+    {"SYSTEM_REQUIREMENTS", "System Requirements Check"},
+    {"CONF_SELECTION", "Configuration Selection"},
+    {"DISK_INFO", "View Disk Information"},
+    {"NETWORK_CHECK", "Check Network"},
+    {"NETWORK_DIAG", "Network Diagnostics"},
+    {"EXIT_INSTALLER", "Exit Installer"},
+    {"PRESS_ANY_KEY", "Press any key to continue..."},
+    {"CONFIRM_EXIT", "Exit Lainux installer?"},
+    {"TYPE_TO_CONFIRM", "Type '%s' to confirm (ESC to cancel):"},
+    {"REBOOT_PROMPT", "Press R to reboot now"},
+    {"SUMMARY_TARGET", "Installation target:"},
+    {"SUMMARY_CREDENTIALS", "Default credentials:"},
+    {"USERNAME", "Username"},
+    {"PASSWORD", "Password"},
+    {"ROOT", "root"},
+    {"LAINUX_USER", "lainux"},
+    {"REBOOT_WARNING", "⚠ Remove installation media before rebooting!"},
+    {"NEXT_STEPS", "Next steps:"},
+    {"STEP1", "1. Remove installation media"},
+    {"STEP2", "2. Reboot the system"},
+    {"STEP3", "3. Log in with credentials above"},
+    {"STEP4", "4. Run 'lainux-setup' for post-installation"},
+    {"NAV_INSTRUCTIONS", "Navigate: ↑ ↓ • Select: Enter • Exit: Esc"},
+    {"VERSION_INFO", "Version v0.1 | UEFI Ready | Secure Boot Compatible"},
+    {NULL, NULL}
+};

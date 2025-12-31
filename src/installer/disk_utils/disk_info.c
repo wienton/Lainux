@@ -8,12 +8,16 @@
 #include "../system_utils/run_command.h"
 #include "../include/installer.h"
 
+// localization
+
+#include "../locale/lang.h"
+
 // Enhanced disk info display
 void show_disk_info() {
     clear();
 
     attron(A_BOLD | COLOR_PAIR(1));
-    mvprintw(2, 5, "STORAGE DEVICE INFORMATION");
+    mvprintw(2, 5,  "STORAGE DEVICE INFORMATION");
     attroff(A_BOLD | COLOR_PAIR(1));
 
     mvprintw(4, 5, "Device     Size      Type      Mountpoint      Filesystem");
