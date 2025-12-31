@@ -11,6 +11,16 @@
 
 #include "../include/printf.h"
 
+typedef struct {
+    char name[128];
+    char version[32];
+    char author[128];
+    char import[64];
+} KernelConfig;
+
+KernelConfig g_config = {0};
+bool load_config(const char *filename);
+
 int execute_command(const char *cmd, char *output, size_t output_size) {
     FILE *pipe = popen(cmd, "r");
     if(!pipe) return -1;
@@ -336,6 +346,10 @@ bool run_test_build() {
 }
 
 int main() {
+    const char* config_txt = "config.txt";
+
+    load_config(config_txt);
+
     printf("Lainux ISO creator\n");
     printf("*********************\n\n");
 
@@ -420,3 +434,52 @@ int main() {
         return EXIT_FAILURE;
     }
 }
+
+bool load_config(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        WARNING("Config file '%s' not found. Using defaults.", filename);
+        strncpy(g_config.name, "lainuxOS", sizeof(g_config.name) - 1);
+        strncpy(g_config.version, "1.0", sizeof(g_config.version) - 1);
+        strncpy(g_config.author, "LAINUX_LAB", sizeof(g_config.author) - 1);
+        strncpy(g_config.import, "default", sizeof(g_config.import) - 1);
+        return true; // используем дефолты
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        // Убираем \n
+        line[strcspn(line, "\n")] = 0;
+
+        // Пропускаем пустые строки и комментарии
+        if (line[0] == '#' || strlen(line) == 0) continue;
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+
+        *eq = '\0';
+        char *key = line;
+        char *value = eq + 1;
+
+        while (*key == ' ') key++;
+        while (*value == ' ') value++;
+
+        if (strcmp(key, "NAME") == 0) {
+            strncpy(g_config.name, value, sizeof(g_config.name) - 1);
+        } else if (strcmp(key, "VERSION") == 0) {
+            strncpy(g_config.version, value, sizeof(g_config.version) - 1);
+        } else if (strcmp(key, "AUTHOR") == 0) {
+            strncpy(g_config.author, value, sizeof(g_config.author) - 1);
+        } else if (strcmp(key, "IMPORT") == 0) {
+            strncpy(g_config.import, value, sizeof(g_config.import) - 1);
+        }
+    }
+
+    fclose(fp);
+    SUCCESS("Loaded config: %s v%s by %s", g_config.name, g_config.version, g_config.author);
+    return true;
+}
+
+
+
+

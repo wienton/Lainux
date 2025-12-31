@@ -11,6 +11,12 @@ Lainux-iso/
 
 lainux-vm.qcow2
 
+# others
+go.mod
+ROADMAP.md
+dev.md
+build.sh
+
 # Driver build
 src/lainux-driver/src/lainux
 src/lainux-driver/diag/
