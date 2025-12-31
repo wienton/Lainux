@@ -4,6 +4,7 @@
 
 #include <ncurses.h>
 #include "../locale/lang.h"
+
 typedef struct {
     Language language;
     int theme;              // 0 = light, 1 = dark, 2 = system
