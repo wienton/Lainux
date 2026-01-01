@@ -1,7 +1,0 @@
-# configure for compile kernel
-
-NAME=lainuxOS
-VERSION=1.1
-AUTHOR=LAINUX_LAB
-IMPORT=default
-
