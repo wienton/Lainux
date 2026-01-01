@@ -443,15 +443,14 @@ bool load_config(const char *filename) {
         strncpy(g_config.version, "1.0", sizeof(g_config.version) - 1);
         strncpy(g_config.author, "LAINUX_LAB", sizeof(g_config.author) - 1);
         strncpy(g_config.import, "default", sizeof(g_config.import) - 1);
-        return true; // используем дефолты
+        return true; // using default
     }
 
     char line[256];
     while (fgets(line, sizeof(line), fp)) {
-        // Убираем \n
+
         line[strcspn(line, "\n")] = 0;
 
-        // Пропускаем пустые строки и комментарии
         if (line[0] == '#' || strlen(line) == 0) continue;
 
         char *eq = strchr(line, '=');
