@@ -4,6 +4,7 @@
 *.so
 *.iso
 
+go.mod
 # binary files
 
 # ISO build output
