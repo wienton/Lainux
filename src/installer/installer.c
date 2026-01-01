@@ -43,6 +43,7 @@
 #include "disk_utils/disk_info.h"
 #include "locale/lang.h"
 #include "settings/settings.h"
+#include "cleanup/cleaner.h"
 
 #define LINK_ISO ""
 #define PACKAGE_LINK ""
@@ -82,12 +83,6 @@ void init_ncurses() {
     init_pair(10, COLOR_BLACK, COLOR_GREEN);  // Success background
 }
 
-// Cleanup function
-void cleanup_ncurses() {
-    if (log_win) delwin(log_win);
-    if (status_win) delwin(status_win);
-    endwin();
-}
 
 // Signal handler for graceful exit
 void signal_handler(int sig) {
@@ -333,19 +328,6 @@ int secure_wipe(const char *device) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "dd if=/dev/zero of=%s bs=1M count=10 status=progress 2>/dev/null", device);
     return run_command(cmd, 1);
-}
-
-// Emergency cleanup
-void emergency_cleanup() {
-    log_message("Performing emergency cleanup...");
-
-    // Unmount anything mounted under /mnt
-    run_command("umount -R /mnt 2>/dev/null || true", 0);
-    run_command("swapoff -a 2>/dev/null || true", 0);
-
-    // Remove temporary files
-    run_command("rm -f /tmp/lainux-*.tmp 2>/dev/null || true", 0);
-    run_command("rm -f /mnt/root/core.pkg.tar.zst 2>/dev/null || true", 0);
 }
 
 // Download thread function

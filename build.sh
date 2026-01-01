@@ -12,7 +12,7 @@ UI_DIR="src/installer/ui"                            # TUI interface
 DISK_UTILS_DIR="src/installer/disk_utils"            # disk utils
 LOCAL_DIR="src/installer/locale"                     # directory for localization(language)
 SETTING_DIR="src/installer/settings"                 # settings directory with files
-
+CLEANS_DIR="src/installer/cleanup"                   # cleanup dir
 # drivers source
 DRIVER_MAIN="lainux-driver"
 
@@ -30,6 +30,7 @@ SOURCES=(
     "$LOCAL_DIR/ru.c"
     "$LOCAL_DIR/en.c"
     "$SETTING_DIR/settings.c"
+    "$CLEANS_DIR/cleaner.c"
 )
 
 # dependencies

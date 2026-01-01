@@ -7,7 +7,4 @@ void log_message(const char *format, ...);
 
 extern pthread_mutex_t log_mutex;
 
-
-
-
 #endif
