@@ -2,12 +2,12 @@
 #include <stdio.h>
 #include <string.h>
 #include "settings.h"
-#include "../locale/lang.h"  // для _("KEY")
+#include "../locale/lang.h"  // for _("KEY")
 
-// Глобальные массивы — переводы внутри функций через _("")
+
 InstallerSettings settings;
 
-// Инициализация по умолчанию
+
 void init_default_settings(void) {
     settings.language = LANG_EN;
     settings.theme = 1; // dark
@@ -15,15 +15,14 @@ void init_default_settings(void) {
     settings.network_mode = 0;    // dhcp
 }
 
-// Применить язык немедленно (для UI)
+
 void apply_language(Language lang) {
-    // Обновляем глобальный current_lang из lang.c
+
     extern Language current_lang;
     current_lang = lang;
     settings.language = lang;
 }
 
-// Вспомогательные функции для отображения значений
 const char* get_theme_name(void) {
     switch (settings.theme) {
         case 0: return _("THEME_LIGHT");
@@ -41,7 +40,7 @@ const char* get_network_mode_name(void) {
     return (settings.network_mode == 0) ? _("NET_DHCP") : _("NET_STATIC");
 }
 
-// Основная функция — интерактивное меню настроек
+// general function - interactive settings approve
 void print_settings(void) {
     int selected = 0;
     const int total_items = 5;
@@ -54,13 +53,13 @@ void print_settings(void) {
         int start_y = max_y / 2 - 6;
         int start_x = (max_x - 52) / 2;
 
-        // Заголовок
+        // header
         attron(A_BOLD | COLOR_PAIR(1));
         mvprintw(start_y, start_x + 15, "%s", _("SETTINGS_TITLE"));
         mvprintw(start_y + 1, start_x, "----------------------------------------------------");
         attroff(A_BOLD | COLOR_PAIR(1));
 
-        // Пункты меню
+        // pointers menu
         const char* items[] = {
             _("LANG_SETTING"),
             _("THEME_SETTING"),
@@ -79,7 +78,6 @@ void print_settings(void) {
                 mvprintw(y, start_x + 4, "%s", items[i]);
             }
 
-            // Текущее значение справа
             const char* value = "";
             switch (i) {
                 case 0: value = (settings.language == LANG_RU) ? "Русский" : "English"; break;
@@ -104,21 +102,20 @@ void print_settings(void) {
             case 10: // Enter
             case '\0':
                 switch (selected) {
-                    case 0: // Язык
+                    case 0: // lang
                         apply_language((settings.language == LANG_EN) ? LANG_RU : LANG_EN);
                         break;
-                    case 1: // Тема
+                    case 1: // theme
                         settings.theme = (settings.theme + 1) % 3;
                         break;
-                    case 2: // Раскладка
+                    case 2: // keyboard
                         settings.keyboard_layout = 1 - settings.keyboard_layout;
-                        // Опционально: применить сейчас
                         // system(settings.keyboard_layout ? "loadkeys ru" : "loadkeys us");
                         break;
-                    case 3: // Сеть
+                    case 3: // net
                         settings.network_mode = 1 - settings.network_mode;
                         break;
-                    case 4: // Назад
+                    case 4: // back
                         quit = 1;
                         break;
                 }
