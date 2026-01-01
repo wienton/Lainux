@@ -2,15 +2,20 @@
 
 set -e
 
-BINARY="installer.lain"
-SRC_DIR="src/installer"
-VM_DIR="src/installer/vm"
-SYSTEM_UTILS_DIR="src/installer/system_utils"
-UTILS_DIR="src/utils/network_connection"
-UI_DIR="src/installer/ui"
-DISK_UTILS_DIR="src/installer/disk_utils"
-LOCAL_DIR="src/installer/locale"
-SETTING_DIR="src/installer/settings"
+# general directory
+BINARY="installer.lain"                              # name binary file, exctension .lain :)
+SRC_DIR="src/installer"                              # general directory for making binary file
+VM_DIR="src/installer/vm"                            # working with virtual machine in our situation qemu
+SYSTEM_UTILS_DIR="src/installer/system_utils"        # system utils
+UTILS_DIR="src/utils/network_connection"             # working with network(sniffer and checker)
+UI_DIR="src/installer/ui"                            # TUI interface
+DISK_UTILS_DIR="src/installer/disk_utils"            # disk utils
+LOCAL_DIR="src/installer/locale"                     # directory for localization(language)
+SETTING_DIR="src/installer/settings"                 # settings directory with files
+
+# drivers source
+DRIVER_MAIN="lainux-driver"
+
 # sources
 SOURCES=(
     "$SRC_DIR/installer.c"
@@ -50,10 +55,10 @@ build_drivers() {
 }
 
 build() {
-    log "Compiling $BINARY..."
+    log "compiling $BINARY..."
     gcc \
         "${SOURCES[@]}" \
-        -o "$BINARY" \
+        -o bin/"$BINARY" \
         -lncurses \
         -lcurl \
         -Wextra \
@@ -61,12 +66,12 @@ build() {
         -std=c11 \
         -lcrypto \
         -D_DEFAULT_SOURCE
-    log "${GREEN}Build successful!${NC}"
-    log "Binary saved as './$BINARY'"
+    log "${GREEN}build successful${NC}"
+    log "bianry saved as './$BINARY'"
 }
 
 
-log "Lainux Installer Build Script"
+log "**** || lainux bash script for make binary files || ****"
 
 for src in "${SOURCES[@]}"; do
     if [[ ! -f "$src" ]]; then
@@ -74,10 +79,10 @@ for src in "${SOURCES[@]}"; do
     fi
 done
 
-read -p "Build installer? (y/N): " -n 1 -r
+read -p "build installer? (y/N): " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    log "Build cancelled."
+    log "build cancelled."
     exit 0
 fi
 
