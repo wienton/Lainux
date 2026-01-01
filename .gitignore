@@ -17,6 +17,7 @@ go.mod
 ROADMAP.md
 dev.md
 build.sh
+test.c
 
 # Driver build
 src/lainux-driver/src/lainux

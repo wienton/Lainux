@@ -1,26 +1,15 @@
-// test
+// unit tests for installer lainux turbo
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
 
-
-typedef enum {
-
-    SUCCESS_TEST,
-    ERROR_MEMORY,
-
-
-} STATUS_TEST;
-
-typedef struct InputParams {
-
-
-
-
-} input_params_t;
 
 
 int main(int argc, char** argv)
 {
+
 
 }
