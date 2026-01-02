@@ -10,9 +10,6 @@
 #include "../utils/run_command.h"
 #include "../include/installer.h"
 
-// localization
-
-#include "../locale/lang.h"
 
 // Enhanced disk info display
 void show_disk_info() {

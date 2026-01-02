@@ -13,7 +13,6 @@
 #include <curl/curl.h>
 #include <string.h>
 #include <time.h>
-#include <stdlib.h>
 // header
 #include "include/installer.h"
 #include "locale/lang.h"
@@ -173,7 +172,7 @@ int main() {
 
         mvprintw(max_y - 3, right_col, "Arch: %s", arch);
         mvprintw(max_y - 2, right_col, "Kernel: %s", kernel);
-        mvprintw(max_y - 1, right_col, "Built with: GCC %s", __VERSION__ + 6);
+        mvprintw(max_y - 1, right_col, "Built with: GCC %s", __VERSION__ );
 
         // Input handling
         int input = getch();

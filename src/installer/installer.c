@@ -11,16 +11,18 @@
 #include <sys/stat.h>
 #include <sys/mount.h>
 #include <fcntl.h>
-#include <errno.h>
 
 #include "turbo/turbo_installer.h"
+// ui, general function for UI
 #include "ui/ui.h"
 #include "utils/log_message.h"
+// start command, system utils
 #include "utils/run_command.h"
-
+// system check hardware && requirements
 #include "system/system_check.h"
-#include "disk_utils/disk_info.h"
+// general installer function prototype and data struct
 #include "include/installer.h"
+// ncurses lib for good working with Ncurses UI
 #include "../../libc/ncurses/ncurses_util.h"
 
 /* Constants */

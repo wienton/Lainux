@@ -1,6 +1,3 @@
-// settings.c
-#include <stdio.h>
-#include <string.h>
 #include "settings.h"
 #include "../locale/lang.h"  // for _("KEY")
 

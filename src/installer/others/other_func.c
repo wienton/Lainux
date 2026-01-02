@@ -1,7 +1,4 @@
 /* missing_functions.c - Implement all missing functions */
-
-#include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <ncurses.h>
 #include <curl/curl.h>
