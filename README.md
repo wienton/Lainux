@@ -12,9 +12,9 @@
 
   <br>
 
-  ![GitHub last commit](https://img.shields.io/github/last-commit/wienton/lainux?style=flat-square&color=800080)
-  ![GitHub stars](https://img.shields.io/github/stars/wienton/lainux?style=flat-square&color=800080)
-  ![GitHub forks](https://img.shields.io/github/forks/wienton/lainux?style=flat-square&color=800080)
+  ![Last Commit](https://img.shields.io/github/last-commit/wienton/lainux?style=flat-square&color=800080&label=last%20commit)
+  ![GitHub Stars](https://img.shields.io/github/stars/wienton/lainux?style=flat-square&color=800080)
+  ![GitHub Forks](https://img.shields.io/github/forks/wienton/lainux?style=flat-square&color=800080)
   ![License](https://img.shields.io/github/license/wienton/lainux?style=flat-square&color=800080)
 
   ---
