@@ -1,5 +1,24 @@
-# Lainux
-![Lainux Logo](https://raw.githubusercontent.com/wienton/lainux/main/assets/lain_background.jpg)
+<!-- # Lainux
+![Lainux Logo](https://raw.githubusercontent.com/wienton/lainux/main/assets/lain_background.jpg) -->
+
+<div align="center">
+  <img src="(https://raw.githubusercontent.com/wienton/lainux/main/assets/lain_background.jpg" alt="LainuxOS Banner" width="700"/>
+
+  <br>
+
+  # LainuxOS: Connect to the Wired.
+
+  _A command-line centric Arch Linux distribution for those who seek absolute control and understanding._
+
+  <br>
+
+  ![GitHub last commit](https://img.shields.io/github/last-commit/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
+  ![GitHub stars](https://img.shields.io/github/stars/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
+  ![GitHub forks](https://img.shields.io/github/forks/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
+  ![License](https://img.shields.io/github/license/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
+
+  ---
+</div>
 
 **Lainux** is a highly specialized, command-line-centric Linux distribution meticulously engineered from the robust foundation of Arch Linux. Developed by **wienton**, this project is dedicated to pushing the boundaries of system performance, absolute control, and uncompromising security for expert users, system developers, and low-level programming enthusiasts.
 
