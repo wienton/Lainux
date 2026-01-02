@@ -18,6 +18,7 @@ ROADMAP.md
 dev.md
 build.sh
 test.c
+test.sh
 
 # Driver build
 src/lainux-driver/src/lainux

@@ -56,7 +56,7 @@ int start_passive_sniff(const char* ifname, int duration_sec) {
                 // buffer[6], buffer[7], buffer[8], buffer[9], buffer[10], buffer[11]);
             }
         }
-        usleep(10000); // 10ms
+        sleep(10000); // 10ms
     }
 
     printf("[SNIFF] Captured %d packets on %s\n", packet_count, ifname);

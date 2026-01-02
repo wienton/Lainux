@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025
  *
  */
-
+#define _GNU_SOURCE
 #include <complex.h>
 #include <openssl/sha.h>
 #include <stdio.h>
@@ -20,6 +20,8 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
+#include <net/if.h>
+#include <ifaddrs.h>
 
 
 

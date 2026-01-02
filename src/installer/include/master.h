@@ -3,7 +3,6 @@
 
 #include <stdbool.h>
 
-/* Declare all functions ONCE here */
 void signal_handler(int sig);
 void perform_installation(const char *disk);
 void install_on_virtual_machine(void);

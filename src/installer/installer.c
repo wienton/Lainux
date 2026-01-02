@@ -12,7 +12,6 @@
 #include <sys/mount.h>
 #include <fcntl.h>
 
-#include "turbo/turbo_installer.h"
 // ui, general function for UI
 #include "ui/ui.h"
 #include "utils/log_message.h"
@@ -121,7 +120,7 @@ static int safe_file_exists(const char *path, int max_wait) {
         if (stat(path, &st) == 0) {
             return 1;
         }
-        usleep(500000); /* 500ms */
+        sleep(500000); /* 500ms */
         attempts++;
     }
     return 0;
@@ -252,7 +251,7 @@ static int safe_mount(const char *source, const char *target, const char *fstype
         }
 
         if (attempts < MAX_RETRIES - 1) {
-            usleep(500000);
+            sleep(500000);
             attempts++;
         }
     }
