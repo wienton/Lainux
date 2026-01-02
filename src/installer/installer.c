@@ -38,12 +38,16 @@
 
 #include "include/installer.h"
 
-#include "system_utils/log_message.h"
-#include "system_utils/run_command.h"
+#include "utils/log_message.h"
+#include "utils/run_command.h"
 #include "disk_utils/disk_info.h"
 #include "locale/lang.h"
 #include "settings/settings.h"
+#include "turbo/turbo_installer.h"
 #include "cleanup/cleaner.h"
+
+// ui
+#include "ui/ui.h"
 
 #define LINK_ISO ""
 #define PACKAGE_LINK ""
@@ -53,35 +57,6 @@ WINDOW *log_win;
 WINDOW *status_win;
 char log_buffer[LOG_BUFFER_SIZE];
 volatile int install_running = 0;
-
-// Initialize ncurses with error handling
-void init_ncurses() {
-    setlocale(LC_ALL, "");
-
-    if (initscr() == NULL) {
-        fprintf(stderr, "Error initializing ncurses\n");
-        exit(1);
-    }
-
-    start_color();
-    use_default_colors();
-    noecho();
-    cbreak();
-    keypad(stdscr, TRUE);
-    curs_set(0);
-
-    // Initialize color pairs
-    init_pair(1, COLOR_CYAN, -1);
-    init_pair(2, COLOR_GREEN, -1);
-    init_pair(3, COLOR_RED, -1);
-    init_pair(4, COLOR_YELLOW, -1);
-    init_pair(5, COLOR_MAGENTA, -1);
-    init_pair(6, COLOR_BLUE, -1);
-    init_pair(7, COLOR_WHITE, -1);
-    init_pair(8, COLOR_BLACK, COLOR_CYAN);    // Selected item
-    init_pair(9, COLOR_BLACK, COLOR_RED);     // Error background
-    init_pair(10, COLOR_BLACK, COLOR_GREEN);  // Success background
-}
 
 
 // Signal handler for graceful exit
@@ -93,128 +68,6 @@ void signal_handler(int sig) {
     exit(0);
 }
 
-// Enhanced file existence check with stat details
-int file_exists(const char *path) {
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        return 0;
-    }
-
-    // Additional verification
-    if (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode)) {
-        int fd = open(path, O_RDONLY);
-        if (fd >= 0) {
-            close(fd);
-            return 1;
-        }
-        return 0;
-    }
-
-    return 1;
-}
-
-// Check filesystem health
-int check_filesystem(const char *path) {
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "fsck -n %s > /dev/null 2>&1", path);
-    return (system(cmd) == 0);
-}
-
-// Get available space in MB
-long get_available_space(const char *path) {
-    struct statvfs st;
-    if (statvfs(path, &st) == 0) {
-        return (st.f_bavail * st.f_frsize) / (1024 * 1024);
-    }
-    return 0;
-}
-
-// Enhanced network check with multiple endpoints
-int check_network() {
-    const char *endpoints[] = {
-        "8.8.8.8",      // Google DNS
-        "1.1.1.1",      // Cloudflare DNS
-        "archlinux.org",
-        "google.com",
-        NULL
-    };
-
-    char cmd[256];
-    for (int i = 0; endpoints[i] != NULL; i++) {
-        if (strchr(endpoints[i], '.') && !strchr(endpoints[i], ' ')) {
-            snprintf(cmd, sizeof(cmd), "ping -c 1 -W 2 %s > /dev/null 2>&1", endpoints[i]);
-            if (system(cmd) == 0) {
-                return 1;
-            }
-        }
-    }
-
-    // Try curl as fallback
-    strcpy(cmd, "curl -s --connect-timeout 3 --max-time 5 https://checkip.amazonaws.com > /dev/null 2>&1");
-    return (system(cmd) == 0);
-}
-
-// Enhanced dependency check with package manager detection
-int check_dependencies() {
-    const char *essential_tools[] = {
-        "arch-chroot", "pacstrap", "mkfs.fat", "mkfs.ext4",
-        "sgdisk", "mount", "umount", "wget", "curl", "grub-install",
-        "lsblk", "genfstab", "blkid", "partprobe", NULL
-    };
-
-    int missing = 0;
-    char pkg_manager[32] = "";
-
-    // Detect package manager
-    if (file_exists("/usr/bin/pacman")) strcpy(pkg_manager, "pacman");
-    else if (file_exists("/usr/bin/apt-get")) strcpy(pkg_manager, "apt");
-    else if (file_exists("/usr/bin/dnf")) strcpy(pkg_manager, "dnf");
-    else if (file_exists("/usr/bin/yum")) strcpy(pkg_manager, "yum");
-    else if (file_exists("/usr/bin/zypper")) strcpy(pkg_manager, "zypper");
-
-    // Check essential tools
-    for (int i = 0; essential_tools[i] != NULL; i++) {
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd), "command -v %s > /dev/null 2>&1", essential_tools[i]);
-        if (system(cmd) != 0) {
-            log_message("Missing: %s", essential_tools[i]);
-            missing++;
-        }
-    }
-
-    if (missing > 0) {
-        log_message("Installing missing dependencies...");
-
-        if (strcmp(pkg_manager, "pacman") == 0) {
-            run_command("pacman -Sy --noconfirm --needed arch-install-scripts dosfstools e2fsprogs gptfdisk grub efibootmgr", 1);
-        } else if (strcmp(pkg_manager, "apt") == 0) {
-            run_command("apt-get update && apt-get install -y arch-install-scripts dosfstools e2fsprogs gdisk grub-efi-amd64", 1);
-        } else if (strcmp(pkg_manager, "dnf") == 0 || strcmp(pkg_manager, "yum") == 0) {
-            run_command("dnf install -y arch-install-scripts dosfstools e2fsprogs gdisk grub2-efi-x64", 1);
-        }
-
-        // Verify installation
-        for (int i = 0; essential_tools[i] != NULL; i++) {
-            char cmd[256];
-            snprintf(cmd, sizeof(cmd), "command -v %s > /dev/null 2>&1", essential_tools[i]);
-            if (system(cmd) != 0) {
-                log_message("Failed to install: %s", essential_tools[i]);
-            }
-        }
-    }
-
-    return (missing == 0);
-}
-
-// Display status message
-void display_status(const char *message) {
-    if (status_win) {
-        wclear(status_win);
-        box(status_win, 0, 0);
-        mvwprintw(status_win, 1, 2, " STATUS: %s", message);
-        wrefresh(status_win);
-    }
-}
 
 // Get system information
 void get_system_info(SystemInfo *info) {
@@ -250,85 +103,6 @@ void get_system_info(SystemInfo *info) {
     }
 }
 
-// Check system requirements
-void check_system_requirements() {
-    SystemInfo info;
-    get_system_info(&info);
-
-    clear();
-
-    attron(A_BOLD | COLOR_PAIR(1));
-    mvprintw(2, 5, "SYSTEM REQUIREMENTS CHECK");
-    attroff(A_BOLD | COLOR_PAIR(1));
-
-    mvprintw(4, 5, "CPU Cores: %d/%d", info.avail_cores, info.total_cores);
-    mvprintw(5, 5, "RAM: %ld/%ld MB", info.avail_ram, info.total_ram);
-    mvprintw(6, 5, "Architecture: %s", info.arch);
-    mvprintw(7, 5, "Kernel: %s", info.kernel);
-
-    // Check minimum requirements
-    int meets_requirements = 1;
-
-    if (info.total_ram < 1024) {  // Less than 1GB RAM
-        attron(COLOR_PAIR(3));
-        mvprintw(9, 5, "WARNING: Minimum 1GB RAM recommended");
-        attroff(COLOR_PAIR(3));
-        meets_requirements = 0;
-    }
-
-    if (info.avail_cores < 2) {   // Less than 2 cores
-        attron(COLOR_PAIR(3));
-        mvprintw(10, 5, "WARNING: Dual-core CPU recommended");
-        attroff(COLOR_PAIR(3));
-        meets_requirements = 0;
-    }
-
-    // Check disk space in /tmp
-    long free_space = get_available_space("/tmp");
-    mvprintw(11, 5, "Available space in /tmp: %ld MB", free_space);
-
-    if (free_space < 2048) {  // Less than 2GB
-        attron(COLOR_PAIR(3));
-        mvprintw(12, 5, "WARNING: At least 2GB free space required in /tmp");
-        attroff(COLOR_PAIR(3));
-        meets_requirements = 0;
-    }
-
-    if (meets_requirements) {
-        attron(COLOR_PAIR(2) | A_BOLD);
-        mvprintw(14, 5, "✓ System meets minimum requirements");
-        attroff(COLOR_PAIR(2) | A_BOLD);
-    } else {
-        attron(COLOR_PAIR(3) | A_BOLD);
-        mvprintw(14, 5, "⚠ System may not perform optimally");
-        attroff(COLOR_PAIR(3) | A_BOLD);
-    }
-
-    mvprintw(16, 5, "Press any key to continue...");
-    refresh();
-    getch();
-}
-
-// Verify EFI support
-int verify_efi() {
-    if (file_exists("/sys/firmware/efi")) {
-        return 1;
-    }
-
-    // Check via efibootmgr
-    int result = run_command("efibootmgr > /dev/null 2>&1", 0);
-    return (result == 0 || result == 1);  // Exit code 1 means no entries but EFI present
-}
-
-// Secure wipe (optional)
-int secure_wipe(const char *device) {
-    log_message("Performing secure wipe on %s...", device);
-
-    // Quick wipe with dd (can be enhanced with multiple passes)
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "dd if=/dev/zero of=%s bs=1M count=10 status=progress 2>/dev/null", device);
-    return run_command(cmd, 1);
-}
 
 // Download thread function
 void *download_thread(void *arg) {
@@ -381,71 +155,7 @@ int download_file(const char *url, const char *output) {
     return ERR_SUCCESS;
 }
 
-// Mount with retry logic
-int mount_with_retry(const char *source, const char *target, const char *fstype, unsigned long flags) {
-    int retries = 3;
-    int delay = 1;
 
-    while (retries > 0) {
-        if (mount(source, target, fstype, flags, NULL) == 0) {
-            return 0;
-        }
-
-        log_message("Mount failed (retry %d): %s", 4 - retries, strerror(errno));
-        retries--;
-        sleep(delay);
-        delay *= 2;
-    }
-
-    return -1;
-}
-
-// Enhanced confirmation with timeout
-int confirm_action(const char *question, const char *required_input) {
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-    WINDOW *confirm_win = newwin(8, max_x - 20, max_y/2 - 4, 10);
-    box(confirm_win, 0, 0);
-    mvwprintw(confirm_win, 1, 2, "%s", question);
-    mvwprintw(confirm_win, 2, 2, "Type '%s' to confirm (ESC to cancel):", required_input);
-    wrefresh(confirm_win);
-
-    char input[32] = {0};
-    int pos = 0;
-    int ch;
-
-    flushinp();
-
-    while (pos < (int)sizeof(input) - 1) {
-        ch = wgetch(confirm_win);
-        if (ch == ERR) continue; // timeout
-
-        if (ch == 27) { // ESC
-            delwin(confirm_win);
-            return 0;
-        }
-        if (ch == '\n' || ch == '\r') { // Enter
-            break;
-        }
-        if (ch == KEY_BACKSPACE || ch == 127) {
-            if (pos > 0) {
-                pos--;
-                input[pos] = '\0';
-                mvwaddch(confirm_win, 3, 4 + pos, ' ');
-                wmove(confirm_win, 3, 4 + pos);
-            }
-        } else if (ch >= 32 && ch <= 126) { // printable ASCII
-            input[pos++] = (char)ch;
-            input[pos] = '\0';
-            mvwaddch(confirm_win, 3, 4 + pos - 1, ch);
-        }
-
-        wrefresh(confirm_win);
-    }
-
-    delwin(confirm_win);
-    return (strcmp(input, required_input) == 0);
-}
 // Get hardware details
 void get_hardware_details(char *cpu_info, char *memory_info, char *gpu_info, char *storage_info) {
     // CPU info with fallbacks
@@ -631,103 +341,6 @@ void show_hardware_info() {
 
     refresh();
     getch();
-}
-// Create partitions with enhanced error handling
-void create_partitions(const char *disk) {
-    char dev_path[32];
-    snprintf(dev_path, sizeof(dev_path), "/dev/%s", disk);
-
-    if (!file_exists(dev_path)) {
-        log_message("Target device not found: %s", dev_path);
-        return;
-    }
-
-    // Check if device is mounted
-    char check_cmd[256];
-    snprintf(check_cmd, sizeof(check_cmd), "mount | grep -q '^%s'", dev_path);
-    if (system(check_cmd) == 0) {
-        log_message("Device %s is mounted. Attempting to unmount...", dev_path);
-        snprintf(check_cmd, sizeof(check_cmd), "umount %s* 2>/dev/null", dev_path);
-        run_command(check_cmd, 0);
-        sleep(1);
-    }
-
-    log_message("Creating partition table on %s...", dev_path);
-
-    // Clear existing partitions with multiple methods
-    char cmd[512];
-
-    // Method 1: sgdisk zap
-    snprintf(cmd, sizeof(cmd), "sgdisk --zap-all %s 2>/dev/null", dev_path);
-    if (run_command(cmd, 0) != 0) {
-        // Method 2: dd wipe partition table
-        log_message("sgdisk failed, trying alternative method...");
-        snprintf(cmd, sizeof(cmd), "dd if=/dev/zero of=%s bs=512 count=1 conv=notrunc 2>/dev/null", dev_path);
-        run_command(cmd, 0);
-
-        // Refresh kernel partition table
-        run_command("partprobe 2>/dev/null", 0);
-        sleep(2);
-    }
-
-    // Create GPT partition table
-    log_message("Creating GPT partition table...");
-    snprintf(cmd, sizeof(cmd), "sgdisk --clear %s", dev_path);
-    if (run_command(cmd, 0) != 0) {
-        log_message("Failed to create GPT, trying fallback...");
-        snprintf(cmd, sizeof(cmd), "parted -s %s mklabel gpt", dev_path);
-        run_command(cmd, 0);
-    }
-
-    // Create EFI partition (550MB)
-    log_message("Creating EFI system partition (550MB)...");
-    snprintf(cmd, sizeof(cmd), "sgdisk --new=1:0:+550M --typecode=1:ef00 %s", dev_path);
-    if (run_command(cmd, 0) != 0) {
-        snprintf(cmd, sizeof(cmd), "parted -s %s mkpart primary fat32 1MiB 551MiB", dev_path);
-        run_command(cmd, 0);
-        snprintf(cmd, sizeof(cmd), "parted -s %s set 1 esp on", dev_path);
-        run_command(cmd, 0);
-    }
-
-    // Create root partition (rest of disk)
-    log_message("Creating root partition...");
-    snprintf(cmd, sizeof(cmd), "sgdisk --new=2:0:0 --typecode=2:8304 %s", dev_path);
-    if (run_command(cmd, 0) != 0) {
-        snprintf(cmd, sizeof(cmd), "parted -s %s mkpart primary ext4 551MiB 100%%", dev_path);
-        run_command(cmd, 0);
-    }
-
-    // Update kernel partition table
-    log_message("Updating partition table...");
-    run_command_with_fallback("partprobe", "blockdev --rereadpt");
-    sleep(3);
-
-    // Verify partitions were created
-    char part1[32], part2[32];
-    if (strncmp(disk, "nvme", 4) == 0 || strncmp(disk, "vd", 2) == 0) {
-        snprintf(part1, sizeof(part1), "%sp1", dev_path);
-        snprintf(part2, sizeof(part2), "%sp2", dev_path);
-    } else {
-        snprintf(part1, sizeof(part1), "%s1", dev_path);
-        snprintf(part2, sizeof(part2), "%s2", dev_path);
-    }
-
-    int attempts = 0;
-    while ((!file_exists(part1) || !file_exists(part2)) && attempts < 15) {
-        log_message("Waiting for partitions to appear (attempt %d)...", attempts + 1);
-        sleep(1);
-        attempts++;
-        run_command("udevadm settle 2>/dev/null", 0);
-    }
-
-    if (!file_exists(part1) || !file_exists(part2)) {
-        log_message("Partition creation failed. Expected: %s, %s", part1, part2);
-        log_message("Trying manual check...");
-        snprintf(cmd, sizeof(cmd), "ls -la %s*", dev_path);
-        run_command(cmd, 1);
-    } else {
-        log_message("Partitions created successfully");
-    }
 }
 
 // Download Arch Linux ISO with progress
@@ -1138,268 +751,6 @@ void select_configuration() {
     }
 }
 
-// Main installation procedure
-void perform_installation(const char *disk) {
-    install_running = 1;
-
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-
-    // Create windows
-    WINDOW *main_win = newwin(max_y - 4, max_x - 4, 2, 2);
-    box(main_win, 0, 0);
-    wrefresh(main_win);
-
-    log_win = newwin(max_y - 10, max_x - 10, 5, 5);
-    scrollok(log_win, TRUE);
-    box(log_win, 0, 0);
-    wrefresh(log_win);
-
-    status_win = newwin(3, max_x - 10, max_y - 4, 5);
-    box(status_win, 0, 0);
-    wrefresh(status_win);
-
-    char dev_path[32];
-    char efi_part[32], root_part[32];
-
-    snprintf(dev_path, sizeof(dev_path), "/dev/%s", disk);
-
-    // Determine partition names
-    if (strncmp(disk, "nvme", 4) == 0 || strncmp(disk, "vd", 2) == 0) {
-        snprintf(efi_part, sizeof(efi_part), "%sp1", dev_path);
-        snprintf(root_part, sizeof(root_part), "%sp2", dev_path);
-    } else {
-        snprintf(efi_part, sizeof(efi_part), "%s1", dev_path);
-        snprintf(root_part, sizeof(root_part), "%s2", dev_path);
-    }
-
-    // Pre-installation checks
-    display_status("Performing system checks...");
-    log_message("Starting installation on %s", dev_path);
-
-    if (!check_dependencies()) {
-        log_message("Dependency check failed");
-        display_status("Dependency check failed");
-        install_running = 0;
-        return;
-    }
-
-    if (!verify_efi()) {
-        log_message("EFI system not detected. Legacy BIOS may not be supported.");
-        if (!confirm_action("Continue without UEFI? (Legacy BIOS mode)", "CONTINUE")) {
-            log_message("Installation aborted");
-            display_status("Installation aborted");
-            install_running = 0;
-            return;
-        }
-    }
-
-    if (!check_network()) {
-        log_message("Network connectivity issue detected");
-        if (!confirm_action("Continue without network?", "CONTINUE")) {
-            log_message("Installation aborted");
-            display_status("Installation aborted");
-            install_running = 0;
-            return;
-        }
-    }
-
-    // Check disk space
-    long required_space = 8000;  // 8GB minimum
-    long available_space = get_available_space("/");
-
-    if (available_space < required_space) {
-        log_message("Insufficient disk space: %ldMB available, %ldMB required",
-                   available_space, required_space);
-        display_status("Insufficient disk space");
-        install_running = 0;
-        return;
-    }
-
-    // Partitioning
-    display_status("Partitioning target disk...");
-    create_partitions(disk);
-
-    // Wait for partitions with timeout
-    int attempts = 0;
-    while ((!file_exists(efi_part) || !file_exists(root_part)) && attempts < 15) {
-        log_message("Waiting for partitions... (attempt %d)", attempts + 1);
-        display_status("Waiting for partitions...");
-        sleep(1);
-        attempts++;
-        run_command("udevadm settle 2>/dev/null", 0);
-    }
-
-    if (!file_exists(efi_part) || !file_exists(root_part)) {
-        log_message("Partition creation failed. Expected: %s, %s", efi_part, root_part);
-        display_status("Partition creation failed");
-        install_running = 0;
-        return;
-    }
-
-    // Formatting
-    display_status("Formatting partitions...");
-    log_message("Formatting %s as FAT32", efi_part);
-
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "mkfs.fat -F32 -n LAINUX_EFI %s", efi_part);
-    if (run_command(cmd, 1) != 0) {
-        log_message("EFI format failed, trying alternative...");
-        snprintf(cmd, sizeof(cmd), "mkfs.vfat -F32 %s", efi_part);
-        run_command(cmd, 1);
-    }
-
-    log_message("Formatting %s as ext4", root_part);
-    snprintf(cmd, sizeof(cmd), "mkfs.ext4 -F -L lainux_root %s", root_part);
-    run_command(cmd, 1);
-
-    // Mounting
-    display_status("Mounting filesystems...");
-
-    // Clean up any existing mounts
-    run_command("umount -R /mnt 2>/dev/null || true", 0);
-    run_command("rmdir /mnt 2>/dev/null || true", 0);
-
-    // Create mount point
-    run_command("mkdir -p /mnt", 0);
-
-    // Mount root with retry
-    if (mount_with_retry(root_part, "/mnt", "ext4", 0) != 0) {
-        log_message("Failed to mount root partition");
-        display_status("Mount failed");
-        install_running = 0;
-        return;
-    }
-
-    // Create and mount boot
-    run_command("mkdir -p /mnt/boot", 0);
-    if (mount_with_retry(efi_part, "/mnt/boot", "vfat", 0) != 0) {
-        log_message("Failed to mount boot partition");
-        display_status("Mount failed");
-        install_running = 0;
-        return;
-    }
-
-    // Base system installation
-    display_status("Installing base system...");
-
-    // Check for existing pacman cache
-    run_command("mkdir -p /mnt/var/cache/pacman/pkg", 0);
-
-    // Install base system with pacstrap
-    snprintf(cmd, sizeof(cmd), "pacstrap -K /mnt base linux linux-firmware base-devel");
-    if (run_command(cmd, 1) != 0) {
-        log_message("Pacstrap failed, trying alternative method...");
-        // Alternative method could be implemented here
-        display_status("Base installation failed");
-        install_running = 0;
-        return;
-    }
-
-    // Generate fstab
-    display_status("Generating filesystem table...");
-    run_command("genfstab -U /mnt >> /mnt/etc/fstab", 1);
-
-    // Core system configuration
-    display_status("Configuring system...");
-
-    // Set timezone
-    run_command("arch-chroot /mnt ln -sf /usr/share/zoneinfo/UTC /etc/localtime", 0);
-    run_command("arch-chroot /mnt hwclock --systohc", 0);
-
-    // Configure locale
-    run_command("echo 'en_US.UTF-8 UTF-8' > /mnt/etc/locale.gen", 0);
-    run_command("echo 'en_US ISO-8859-1' >> /mnt/etc/locale.gen", 0);
-    run_command("arch-chroot /mnt locale-gen", 0);
-    run_command("echo 'LANG=en_US.UTF-8' > /mnt/etc/locale.conf", 0);
-
-    // Set hostname
-    run_command("echo 'lainux' > /mnt/etc/hostname", 0);
-    run_command("echo '127.0.1.1 lainux.localdomain lainux' >> /mnt/etc/hosts", 0);
-
-    // Install Lainux core with fallback
-    display_status("Installing Lainux core...");
-
-    int download_result = download_file(CORE_URL, "/mnt/root/core.pkg.tar.zst");
-    if (download_result != ERR_SUCCESS) {
-        log_message("Primary download failed, trying fallback...");
-        download_result = download_file(FALLBACK_CORE_URL, "/mnt/root/core.pkg.tar.zst");
-    }
-
-    if (download_result == ERR_SUCCESS) {
-        run_command("arch-chroot /mnt pacman -U /root/core.pkg.tar.zst --noconfirm", 1);
-    } else {
-        log_message("Failed to download Lainux core. Installation will continue without it.");
-    }
-
-    // Install bootloader
-    display_status("Installing bootloader...");
-
-    // Check if we're in chroot or need arch-chroot
-    if (file_exists("/mnt/usr/bin/grub-install")) {
-        snprintf(cmd, sizeof(cmd), "arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=lainux --recheck");
-    } else {
-        snprintf(cmd, sizeof(cmd), "grub-install --target=x86_64-efi --efi-directory=/mnt/boot --bootloader-id=lainux --recheck");
-    }
-
-    if (run_command(cmd, 1) != 0) {
-        log_message("GRUB installation failed, trying alternative...");
-        // Try without target specification
-        snprintf(cmd, sizeof(cmd), "arch-chroot /mnt grub-install --efi-directory=/boot --bootloader-id=lainux");
-        run_command(cmd, 1);
-    }
-
-    // Generate GRUB config
-    if (file_exists("/mnt/usr/bin/grub-mkconfig")) {
-        run_command("arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg", 1);
-    } else {
-        run_command("grub-mkconfig -o /mnt/boot/grub/grub.cfg", 1);
-    }
-
-    // Set root password
-    display_status("Setting up users...");
-    run_command("echo 'root:lainux' | arch-chroot /mnt chpasswd", 0);
-
-    // Create a regular user
-    run_command("arch-chroot /mnt useradd -m -G wheel -s /bin/bash lainux", 0);
-    run_command("echo 'lainux:lainux' | arch-chroot /mnt chpasswd", 0);
-
-    // Configure sudo
-    run_command("echo '%%wheel ALL=(ALL) ALL' > /mnt/etc/sudoers.d/wheel", 0);
-    run_command("chmod 440 /mnt/etc/sudoers.d/wheel", 0);
-
-    // Enable network services
-    run_command("arch-chroot /mnt systemctl enable systemd-networkd systemd-resolved", 0);
-
-    // Cleanup
-    display_status("Cleaning up...");
-
-    // Remove downloaded package
-    run_command("rm -f /mnt/root/core.pkg.tar.zst 2>/dev/null", 0);
-
-    // Clear pacman cache
-    run_command("arch-chroot /mnt pacman -Scc --noconfirm", 0);
-
-    // Unmount filesystems
-    run_command("sync", 0);
-    run_command("umount -R /mnt", 0);
-
-    log_message("Installation complete!");
-    display_status("Installation complete!");
-
-    // Clean up windows
-    delwin(log_win);
-    delwin(status_win);
-    delwin(main_win);
-    log_win = NULL;
-    status_win = NULL;
-
-    install_running = 0;
-
-    show_summary(disk);
-}
-
-
 // Show installation summary
 void show_summary(const char *disk) {
     clear();
@@ -1473,19 +824,19 @@ int main() {
     // Initialize ncurses
     init_ncurses();
 
+
     char target_disk[32] = "";
     int menu_selection = 0;
 
     const char *menu_items[] = {
-        _("INSTALL_ON_HARDWARE"),
-        _("INSTALL_ON_VM"),
-        _("HARDWARE_INFO"),
-        _("SYSTEM_REQUIREMENTS"),
-        _("CONF_SELECTION"),
-        _("DISK_INFO"),
-        _("NETWORK_CHECK"),
-        _("SETTINGS"),
-        _("EXIT_INSTALLER")
+        _("INSTALL_ON_HARDWARE"),    // 0
+        _("INSTALL_ON_VM"),          // 1
+        _("HARDWARE_INFO"),          // 2
+        _("SYSTEM_REQUIREMENTS"),    // 3
+        _("CONF_SELECTION"),         // 4
+        _("DISK_INFO"),              // 5
+        _("SETTINGS"),               // 6
+        _("EXIT_INSTALLER")          // 7
     };
 
     int max_y, max_x;
@@ -1515,14 +866,14 @@ int main() {
         mvprintw(19, time_x, "System time: %s", time_str);
         attroff(COLOR_PAIR(7));
 
-        int menu_count = sizeof(menu_items) / sizeof(menu_items[0]); // = 9
-        // Вычисляем позицию начала самого длинного пункта меню
+        int menu_count = sizeof(menu_items) / sizeof(menu_items[0]); // = 8
+
         int max_item_len = 0;
         for (int i = 0; i < menu_count; i++) {
             int len = strlen(menu_items[i]);
             if (len > max_item_len) max_item_len = len;
         }
-        // Добавляем 4 символа на "› " и отступ
+
         int menu_width = max_item_len + 4;
         int menu_start_x = (max_x - menu_width) / 2;
 
@@ -1537,10 +888,12 @@ int main() {
                     attron(A_REVERSE | COLOR_PAIR(5));  // Magenta for info
                 } else if (i == 4) {
                     attron(A_REVERSE | COLOR_PAIR(6));  // Blue for config
-                } else if (i == 8) {
+                } else if (i == 5) {
+                    attron(A_REVERSE | COLOR_PAIR(7));  // White for disk info
+                } else if (i == 6) {
+                    attron(A_REVERSE | COLOR_PAIR(4));  // Yellow for settings
+                } else if (i == 7) {
                     attron(A_REVERSE | COLOR_PAIR(3));  // Red for exit
-                } else  {
-                    attron(A_REVERSE | COLOR_PAIR(7));  // White for others
                 }
                 mvprintw(22 + i * 2, menu_start_x, "› %s", menu_items[i]);
 
@@ -1553,10 +906,12 @@ int main() {
                     attroff(A_REVERSE | COLOR_PAIR(5));
                 } else if (i == 4) {
                     attroff(A_REVERSE | COLOR_PAIR(6));
-                } else if (i == 8) {
-                    attroff(A_REVERSE | COLOR_PAIR(3));
-                } else {
+                } else if (i == 5) {
                     attroff(A_REVERSE | COLOR_PAIR(7));
+                } else if (i == 6) {
+                    attroff(A_REVERSE | COLOR_PAIR(4));
+                } else if (i == 7) {
+                    attroff(A_REVERSE | COLOR_PAIR(3));
                 }
             } else {
                 // Normal display with colors
@@ -1576,14 +931,18 @@ int main() {
                     attron(COLOR_PAIR(6));
                     mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(6));
-                } else if (i == 8) {
-                    attron(COLOR_PAIR(3));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(3));
-                } else {
+                } else if (i == 5) {
                     attron(COLOR_PAIR(7));
                     mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
                     attroff(COLOR_PAIR(7));
+                } else if (i == 6) {
+                    attron(COLOR_PAIR(4));
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
+                    attroff(COLOR_PAIR(4));
+                } else if (i == 7) {
+                    attron(COLOR_PAIR(3));
+                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
+                    attroff(COLOR_PAIR(3));
                 }
             }
         }
@@ -1596,7 +955,6 @@ int main() {
             arch[strcspn(arch, "\n")] = 0;
             pclose(fp);
         }
-
 
         // Show kernel version
         fp = popen("uname -r | cut -d- -f1", "r");
@@ -1613,7 +971,7 @@ int main() {
         mvprintw(max_y - 3, nav_x, "Navigate: ↑ ↓ • Select: Enter • Exit: Esc");
 
         // system info -- right
-        int right_col = max_x - 30; // 30 symbols with rigth
+        int right_col = max_x - 30; // 30 symbols with right
 
         mvprintw(max_y - 3, right_col, "Arch: %s", arch);
         mvprintw(max_y - 2, right_col, "Kernel: %s", kernel);
@@ -1622,7 +980,7 @@ int main() {
         int input = getch();
         switch (input) {
             case KEY_UP:
-                menu_selection = (menu_selection > 0) ? menu_selection - 1 : 8;
+                menu_selection = (menu_selection > 0) ? menu_selection - 1 : 7;
                 break;
             case KEY_DOWN:
                 menu_selection = (menu_selection < 7) ? menu_selection + 1 : 0;
@@ -1650,50 +1008,11 @@ int main() {
                     case 5: // Disk Info
                         show_disk_info();
                         break;
-                 case 6: // Network Check
-                    clear();
-                    mvprintw(5, 10, "Network status: ");
-                    mvprintw(6, 10, "Checking...");
-                    refresh(); // socket thinkin
-
-                    if (check_network()) {
-                        mvprintw(6, 10, "           ");
-
-                        attron(COLOR_PAIR(2)); // Зеленый, я так понял?
-                        mvprintw(5, 27, "Connected ✓");
-                        attroff(COLOR_PAIR(2));
-
-                        // public IP from ipify
-                        FILE *fp = popen("curl -s --max-time 2 https://api.ipify.org 2>/dev/null", "r");
-                        char ip[64];
-                        if (fp && fgets(ip, sizeof(ip), fp)) {
-                            ip[strcspn(ip, "\n")] = 0;
-                            mvprintw(7, 10, "Public IP:  %s", ip);
-                            pclose(fp);
-                        } else {
-                            mvprintw(7, 10, "Public IP:  Unknown (DNS error?)");
-                        }
-
-                    } else {
-                        mvprintw(6, 10, "           ");
-                        attron(COLOR_PAIR(3)); // Красный
-                        mvprintw(5, 27, "No connection ✗");
-                        attroff(COLOR_PAIR(3));
-                        mvprintw(7, 10, "Check your cable or Wi-Fi, bro!");
-                    }
-
-                    mvprintw(10, 10, "Press any key to return...");
-                    refresh();
-                    getch();
-                    break;
-
-                    case 7:
+                    case 6: // Settings
                         clear();
-                       print_settings();
-
-
+                        print_settings();
                         break;
-                    case 8: // Exit
+                    case 7: // Exit
                         if (confirm_action("Exit Lainux installer?", "EXIT")) {
                             cleanup_ncurses();
                             curl_global_cleanup();

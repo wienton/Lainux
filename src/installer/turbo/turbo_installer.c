@@ -1,289 +1,275 @@
-/*
-
-* Not Useed, look installer.c
-
-*/
-
-#include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include <unistd.h>
-#include "../system/system.h"
+
+
 #include "turbo_installer.h"
+#include "../ui/ui.h"
+#include "../utils/log_message.h"
+#include "../utils/run_command.h"
 
-/**
- * Auto-detects internet connection using multiple methods
- * Tries different servers and protocols for reliable detection
- */
-int auto_detect_internet(void) {
-    printf("Detecting internet connection...\n");
+#include "../system/system_check.h"
+#include "../disk_utils/disk_info.h"
+#include "../include/installer.h"
 
-    // Test servers with different protocols
-    const char* servers[] = {
-        "ping -c 1 -W 2 1.1.1.1 > /dev/null 2>&1",        // Cloudflare DNS
-        "ping -c 1 -W 2 8.8.8.8 > /dev/null 2>&1",        // Google DNS
-        "ping -c 1 -W 2 archlinux.org > /dev/null 2>&1",  // Arch Linux server
-        "curl -s --connect-timeout 5 https://archlinux.org > /dev/null 2>&1" // HTTPS test
-    };
 
-    // Try each connection method sequentially
-    for (int i = 0; i < 4; i++) {
-        if (system(servers[i]) == 0) {
-            printf("Internet detected\n");
-            return 1;
+
+// Main installation procedure
+void perform_installation(const char *disk) {
+    install_running = 1;
+
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+
+    // Create windows
+    WINDOW *main_win = newwin(max_y - 4, max_x - 4, 2, 2);
+    box(main_win, 0, 0);
+    wrefresh(main_win);
+
+    log_win = newwin(max_y - 10, max_x - 10, 5, 5);
+    scrollok(log_win, TRUE);
+    box(log_win, 0, 0);
+    wrefresh(log_win);
+
+    status_win = newwin(3, max_x - 10, max_y - 4, 5);
+    box(status_win, 0, 0);
+    wrefresh(status_win);
+
+    char dev_path[32];
+    char efi_part[32], root_part[32];
+
+    snprintf(dev_path, sizeof(dev_path), "/dev/%s", disk);
+
+    // Determine partition names
+    if (strncmp(disk, "nvme", 4) == 0 || strncmp(disk, "vd", 2) == 0) {
+        snprintf(efi_part, sizeof(efi_part), "%sp1", dev_path);
+        snprintf(root_part, sizeof(root_part), "%sp2", dev_path);
+    } else {
+        snprintf(efi_part, sizeof(efi_part), "%s1", dev_path);
+        snprintf(root_part, sizeof(root_part), "%s2", dev_path);
+    }
+
+    // Pre-installation checks
+    display_status("Performing system checks...");
+    log_message("Starting installation on %s", dev_path);
+
+    if (!check_dependencies()) {
+        log_message("Dependency check failed");
+        display_status("Dependency check failed");
+        install_running = 0;
+        return;
+    }
+
+    if (!verify_efi()) {
+        log_message("EFI system not detected. Legacy BIOS may not be supported.");
+        if (!confirm_action("Continue without UEFI? (Legacy BIOS mode)", "CONTINUE")) {
+            log_message("Installation aborted");
+            display_status("Installation aborted");
+            install_running = 0;
+            return;
         }
     }
 
-    // If all tests fail, try to start network services
-    printf("No internet connection found\n");
-    printf("Trying to start network services...\n");
-
-    // Start common network services
-    system("systemctl start NetworkManager 2>/dev/null || true");
-    system("systemctl start dhcpcd 2>/dev/null || true");
-    system("systemctl start wpa_supplicant 2>/dev/null || true");
-
-    // Wait for services to initialize
-    sleep(3);
-
-    // Final check using standard internet test
-    return check_internet();
-}
-
-/**
- * Auto-configures system settings without user intervention
- * Sets up timezone, locale, hostname, network, and user accounts
- */
-int auto_configure_system(void) {
-    printf("Auto-configuring system...\n");
-
-    // 1. Auto-detect timezone based on geolocation
-    printf("  Detecting timezone...\n");
-
-    // Try to detect country via IP geolocation
-    if (system("curl -s ifconfig.co/country 2>/dev/null | grep -i russia >/dev/null") == 0) {
-        // Russia detected - set Moscow timezone
-        system("ln -sf /usr/share/zoneinfo/Europe/Moscow /mnt/etc/localtime 2>/dev/null");
-        printf("  Timezone: Europe/Moscow\n");
-    } else if (system("curl -s ifconfig.co/country 2>/dev/null | grep -i ukraine >/dev/null") == 0) {
-        // Ukraine detected - set Kiev timezone
-        system("ln -sf /usr/share/zoneinfo/Europe/Kiev /mnt/etc/localtime 2>/dev/null");
-        printf("  Timezone: Europe/Kiev\n");
-    } else {
-        // Default to UTC if location cannot be determined
-        system("ln -sf /usr/share/zoneinfo/UTC /mnt/etc/localtime 2>/dev/null");
-        printf("  Timezone: UTC (default)\n");
+    if (!check_network()) {
+        log_message("Network connectivity issue detected");
+        if (!confirm_action("Continue without network?", "CONTINUE")) {
+            log_message("Installation aborted");
+            display_status("Installation aborted");
+            install_running = 0;
+            return;
+        }
     }
 
-    // 2. Configure system locale
-    printf("  Configuring locale...\n");
-    system("echo 'en_US.UTF-8 UTF-8' > /mnt/etc/locale.gen 2>/dev/null");
-    system("echo 'ru_RU.UTF-8 UTF-8' >> /mnt/etc/locale.gen 2>/dev/null");
-    system("arch-chroot /mnt locale-gen 2>/dev/null");
-    system("echo 'LANG=en_US.UTF-8' > /mnt/etc/locale.conf 2>/dev/null");
+    // Check disk space
+    long required_space = 8000;  // 8GB minimum
+    long available_space = get_available_space("/");
 
-    // 3. Set default hostname
-    printf("  Setting hostname...\n");
-    system("echo 'lainux-pc' > /mnt/etc/hostname 2>/dev/null");
+    if (available_space < required_space) {
+        log_message("Insufficient disk space: %ldMB available, %ldMB required",
+                   available_space, required_space);
+        display_status("Insufficient disk space");
+        install_running = 0;
+        return;
+    }
 
-    // 4. Configure /etc/hosts file
-    system("echo '127.0.0.1 localhost' > /mnt/etc/hosts 2>/dev/null");
-    system("echo '::1 localhost' >> /mnt/etc/hosts 2>/dev/null");
-    system("echo '127.0.1.1 lainux-pc.localdomain lainux-pc' >> /mnt/etc/hosts 2>/dev/null");
+    // Partitioning
+    display_status("Partitioning target disk...");
+    create_partitions(disk);
 
-    // 5. Enable network services
-    printf("  Configuring network...\n");
-    system("arch-chroot /mnt systemctl enable NetworkManager 2>/dev/null");
-    system("arch-chroot /mnt systemctl enable dhcpcd 2>/dev/null");
+    // Wait for partitions with timeout
+    int attempts = 0;
+    while ((!file_exists(efi_part) || !file_exists(root_part)) && attempts < 15) {
+        log_message("Waiting for partitions... (attempt %d)", attempts + 1);
+        display_status("Waiting for partitions...");
+        sleep(1);
+        attempts++;
+        run_command("udevadm settle 2>/dev/null", 0);
+    }
 
-    // 6. Create default user account
-    printf("  Creating user...\n");
-    system("arch-chroot /mnt useradd -m -G wheel,audio,video,storage -s /bin/bash lainux 2>/dev/null || true");
-    system("echo 'lainux:lainux' | arch-chroot /mnt chpasswd 2>/dev/null");
-    system("arch-chroot /mnt sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers 2>/dev/null");
+    if (!file_exists(efi_part) || !file_exists(root_part)) {
+        log_message("Partition creation failed. Expected: %s, %s", efi_part, root_part);
+        display_status("Partition creation failed");
+        install_running = 0;
+        return;
+    }
 
-    // 7. Initialize pacman package manager keys
-    printf("  Setting up pacman keys...\n");
-    system("arch-chroot /mnt pacman-key --init 2>/dev/null");
-    system("arch-chroot /mnt pacman-key --populate archlinux 2>/dev/null");
-
-    printf("System auto-configured\n");
-    return 0;
-}
-
-/**
- * Automatically installs essential packages for Turbo Install
- * Includes base system, development tools, and utilities
- */
-int auto_install_packages(void) {
-    printf("Auto-installing essential packages...\n");
-
-    // Base system packages (essential for Arch Linux)
-    const char *base_packages =
-        "base linux linux-firmware linux-headers "
-        "base-devel grub efibootmgr networkmanager "
-        "dhcpcd nano vim sudo git curl wget";
-
-    // Comfort packages (utilities for better user experience)
-    const char *comfort_packages =
-        "ntp chrony htop neofetch zip unzip p7zip "
-        "rsync bash-completion";
+    // Formatting
+    display_status("Formatting partitions...");
+    log_message("Formatting %s as FAT32", efi_part);
 
     char cmd[512];
-
-    // Install base packages using pacstrap
-    printf("  Installing base packages...\n");
-    snprintf(cmd, sizeof(cmd),
-             "pacstrap -K /mnt %s 2>/dev/null",
-             base_packages);
-    system(cmd);
-
-    // Wait for package installation to complete
-    sleep(1);
-
-    // Install additional comfort packages
-    printf("  Installing comfort packages...\n");
-    snprintf(cmd, sizeof(cmd),
-             "arch-chroot /mnt pacman -S --noconfirm %s 2>/dev/null",
-             comfort_packages);
-    system(cmd);
-
-    printf("Essential packages installed\n");
-    return 0;
-}
-
-/**
- * Main Turbo Install function - complete automatic installation
- * Handles entire installation process from disk preparation to finalization
- */
-int turbo_install(DiskInfo *disk) {
-    printf("\n");
-    printf("TURBO INSTALL LAINUX\n");
-    printf("********************\n");
-    printf("Target: /dev/%s (%s)\n", disk->name, disk->size);
-    printf("Model: %s\n", disk->model);
-    printf("\n");
-
-    // Final warning about data destruction
-    printf("WARNING: ALL DATA ON /dev/%s WILL BE DESTROYED!\n", disk->name);
-    printf("This process cannot be undone.\n");
-    printf("\nStarting in 5 seconds...\n");
-
-    // Countdown before starting installation
-    for (int i = 5; i > 0; i--) {
-        printf("%d... ", i);
-        fflush(stdout);
-        sleep(1);
-    }
-    printf("\n\n");
-
-    int result = 0;
-
-    // Step 1: Network connectivity check
-    printf("STEP 1: Network check\n");
-    if (!auto_detect_internet()) {
-        printf("No internet connection available\n");
-        printf("Please connect to network and try again\n");
-        return 1;
+    snprintf(cmd, sizeof(cmd), "mkfs.fat -F32 -n LAINUX_EFI %s", efi_part);
+    if (run_command(cmd, 1) != 0) {
+        log_message("EFI format failed, trying alternative...");
+        snprintf(cmd, sizeof(cmd), "mkfs.vfat -F32 %s", efi_part);
+        run_command(cmd, 1);
     }
 
-    // Step 2: Disk preparation (partitioning)
-    printf("STEP 2: Disk preparation\n");
-    if (prepare_disk(disk->name) != 0) {
-        printf("Failed to prepare disk\n");
-        return 2;
+    log_message("Formatting %s as ext4", root_part);
+    snprintf(cmd, sizeof(cmd), "mkfs.ext4 -F -L lainux_root %s", root_part);
+    run_command(cmd, 1);
+
+    // Mounting
+    display_status("Mounting filesystems...");
+
+    // Clean up any existing mounts
+    run_command("umount -R /mnt 2>/dev/null || true", 0);
+    run_command("rmdir /mnt 2>/dev/null || true", 0);
+
+    // Create mount point
+    run_command("mkdir -p /mnt", 0);
+
+    // Mount root with retry
+    if (mount_with_retry(root_part, "/mnt", "ext4", 0) != 0) {
+        log_message("Failed to mount root partition");
+        display_status("Mount failed");
+        install_running = 0;
+        return;
     }
 
-    // Step 3: Format partitions and mount them
-    printf("STEP 3: Formatting and mounting\n");
-    if (format_and_mount(disk->name) != 0) {
-        printf("Failed to format/mount\n");
-        return 3;
+    // Create and mount boot
+    run_command("mkdir -p /mnt/boot", 0);
+    if (mount_with_retry(efi_part, "/mnt/boot", "vfat", 0) != 0) {
+        log_message("Failed to mount boot partition");
+        display_status("Mount failed");
+        install_running = 0;
+        return;
     }
 
-    // Step 4: Generate filesystem table
-    printf("STEP 4: Generating fstab\n");
-    system("genfstab -U /mnt >> /mnt/etc/fstab 2>/dev/null");
+    // Base system installation
+    display_status("Installing base system...");
 
-    // Step 5: Install essential packages
-    printf("STEP 5: Installing packages\n");
-    if (auto_install_packages() != 0) {
-        printf("⚠ Package installation had issues\n");
+    // Check for existing pacman cache
+    run_command("mkdir -p /mnt/var/cache/pacman/pkg", 0);
+
+    // Install base system with pacstrap
+    snprintf(cmd, sizeof(cmd), "pacstrap -K /mnt base linux linux-firmware base-devel");
+    if (run_command(cmd, 1) != 0) {
+        log_message("Pacstrap failed, trying alternative method...");
+        // Alternative method could be implemented here
+        display_status("Base installation failed");
+        install_running = 0;
+        return;
     }
 
-    // Step 6: System configuration
-    printf("STEP 6: System configuration\n");
-    if (auto_configure_system() != 0) {
-        printf("⚠ System configuration had issues\n");
+    // Generate fstab
+    display_status("Generating filesystem table...");
+    run_command("genfstab -U /mnt >> /mnt/etc/fstab", 1);
+
+    // Core system configuration
+    display_status("Configuring system...");
+
+    // Set timezone
+    run_command("arch-chroot /mnt ln -sf /usr/share/zoneinfo/UTC /etc/localtime", 0);
+    run_command("arch-chroot /mnt hwclock --systohc", 0);
+
+    // Configure locale
+    run_command("echo 'en_US.UTF-8 UTF-8' > /mnt/etc/locale.gen", 0);
+    run_command("echo 'en_US ISO-8859-1' >> /mnt/etc/locale.gen", 0);
+    run_command("arch-chroot /mnt locale-gen", 0);
+    run_command("echo 'LANG=en_US.UTF-8' > /mnt/etc/locale.conf", 0);
+
+    // Set hostname
+    run_command("echo 'lainux' > /mnt/etc/hostname", 0);
+    run_command("echo '127.0.1.1 lainux.localdomain lainux' >> /mnt/etc/hosts", 0);
+
+    // Install Lainux core with fallback
+    display_status("Installing Lainux core...");
+
+    int download_result = download_file(CORE_URL, "/mnt/root/core.pkg.tar.zst");
+    if (download_result != ERR_SUCCESS) {
+        log_message("Primary download failed, trying fallback...");
+        download_result = download_file(FALLBACK_CORE_URL, "/mnt/root/core.pkg.tar.zst");
     }
 
-    // Step 7: Bootloader installation
-    printf("STEP 7: Installing bootloader\n");
-    if (install_grub(disk->name) != 0) {
-        printf("⚠ Bootloader installation had issues\n");
+    if (download_result == ERR_SUCCESS) {
+        run_command("arch-chroot /mnt pacman -U /root/core.pkg.tar.zst --noconfirm", 1);
+    } else {
+        log_message("Failed to download Lainux core. Installation will continue without it.");
     }
 
-    // Step 8: System optimizations
-    printf("STEP 8: System optimizations\n");
+    // Install bootloader
+    display_status("Installing bootloader...");
 
-    // Create swap file for memory management
-    printf("  Creating swap file...\n");
-    system("arch-chroot /mnt fallocate -l 2G /swapfile 2>/dev/null || "
-           "arch-chroot /mnt dd if=/dev/zero of=/swapfile bs=1M count=2048 2>/dev/null");
-    system("arch-chroot /mnt chmod 600 /swapfile 2>/dev/null");
-    system("arch-chroot /mnt mkswap /swapfile 2>/dev/null");
-    system("arch-chroot /mnt swapon /swapfile 2>/dev/null");
-    system("echo '/swapfile none swap defaults 0 0' >> /mnt/etc/fstab 2>/dev/null");
-
-    // Enable TRIM support for SSD optimization
-    printf("  Enabling TRIM support...\n");
-    system("arch-chroot /mnt systemctl enable fstrim.timer 2>/dev/null");
-
-    // Performance tuning via sysctl configuration
-    printf("  Performance tweaks...\n");
-    FILE *fp = fopen("/mnt/etc/sysctl.d/99-lainux.conf", "w");
-    if (fp) {
-        // Memory management optimizations
-        fprintf(fp, "vm.swappiness=10\n");           // Reduce swap usage
-        fprintf(fp, "vm.vfs_cache_pressure=50\n");   // Cache pressure tuning
-
-        // Network buffer optimizations
-        fprintf(fp, "net.core.rmem_default=262144\n");
-        fprintf(fp, "net.core.wmem_default=262144\n");
-        fprintf(fp, "net.core.rmem_max=33554432\n");
-        fprintf(fp, "net.core.wmem_max=33554432\n");
-        fclose(fp);
+    // Check if we're in chroot or need arch-chroot
+    if (file_exists("/mnt/usr/bin/grub-install")) {
+        snprintf(cmd, sizeof(cmd), "arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=lainux --recheck");
+    } else {
+        snprintf(cmd, sizeof(cmd), "grub-install --target=x86_64-efi --efi-directory=/mnt/boot --bootloader-id=lainux --recheck");
     }
 
-    // Step 9: Final system cleanup and preparation
-    printf("STEP 9: Finalizing\n");
+    if (run_command(cmd, 1) != 0) {
+        log_message("GRUB installation failed, trying alternative...");
+        // Try without target specification
+        snprintf(cmd, sizeof(cmd), "arch-chroot /mnt grub-install --efi-directory=/boot --bootloader-id=lainux");
+        run_command(cmd, 1);
+    }
 
-    // Update initramfs for new kernel modules
-    system("arch-chroot /mnt mkinitcpio -P 2>/dev/null");
+    // Generate GRUB config
+    if (file_exists("/mnt/usr/bin/grub-mkconfig")) {
+        run_command("arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg", 1);
+    } else {
+        run_command("grub-mkconfig -o /mnt/boot/grub/grub.cfg", 1);
+    }
 
-    // Sync filesystem to ensure data is written
-    system("sync");
+    // Set root password
+    display_status("Setting up users...");
+    run_command("echo 'root:lainux' | arch-chroot /mnt chpasswd", 0);
 
-    // Unmount all partitions from /mnt
-    printf("  Unmounting partitions...\n");
-    system("umount -R /mnt 2>/dev/null");
+    // Create a regular user
+    run_command("arch-chroot /mnt useradd -m -G wheel -s /bin/bash lainux", 0);
+    run_command("echo 'lainux:lainux' | arch-chroot /mnt chpasswd", 0);
 
-    // Installation complete message
-    printf("\n");
-    printf("TURBO INSTALL COMPLETE!\n");
-    printf("**********************\n");
-    printf("System successfully installed on /dev/%s\n", disk->name);
-    printf("\n");
-    printf("Credentials:\n");
-    printf("  Username: lainux\n");
-    printf("  Password: lainux\n");
-    printf("\n");
-    printf("Next steps:\n");
-    printf("  1. Reboot your computer\n");
-    printf("  2. Remove installation media\n");
-    printf("  3. Boot into Lainux\n");
-    printf("  4. Run 'neofetch' to verify installation\n");
-    printf("\n");
+    // Configure sudo
+    run_command("echo '%%wheel ALL=(ALL) ALL' > /mnt/etc/sudoers.d/wheel", 0);
+    run_command("chmod 440 /mnt/etc/sudoers.d/wheel", 0);
 
-    return result;
+    // Enable network services
+    run_command("arch-chroot /mnt systemctl enable systemd-networkd systemd-resolved", 0);
+
+    // Cleanup
+    display_status("Cleaning up...");
+
+    // Remove downloaded package
+    run_command("rm -f /mnt/root/core.pkg.tar.zst 2>/dev/null", 0);
+
+    // Clear pacman cache
+    run_command("arch-chroot /mnt pacman -Scc --noconfirm", 0);
+
+    // Unmount filesystems
+    run_command("sync", 0);
+    run_command("umount -R /mnt", 0);
+
+    log_message("Installation complete!");
+    display_status("Installation complete!");
+
+    // Clean up windows
+    delwin(log_win);
+    delwin(status_win);
+    delwin(main_win);
+    log_win = NULL;
+    status_win = NULL;
+
+    install_running = 0;
+
+    show_summary(disk);
 }

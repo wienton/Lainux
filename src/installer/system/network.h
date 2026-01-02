@@ -9,5 +9,8 @@ typedef struct {
 } NetStatus;
 
 NetStatus check_network_vibe();
+int download_file(const char *url, const char *output);
+void *download_thread(void *arg);
+void download_arch_iso(void);
 
 #endif

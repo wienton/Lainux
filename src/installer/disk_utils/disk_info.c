@@ -1,11 +1,13 @@
+#include <errno.h>
 #include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <time.h>
 #include <unistd.h>
-#include "../system_utils/log_message.h"
-#include "../system_utils/run_command.h"
+#include "../utils/log_message.h"
+#include "../utils/run_command.h"
 #include "../include/installer.h"
 
 // localization
@@ -208,4 +210,137 @@ void get_target_disk(char *target, size_t size) {
                 return;
         }
     }
+}
+
+
+
+// Create partitions with enhanced error handling
+void create_partitions(const char *disk) {
+    char dev_path[32];
+    snprintf(dev_path, sizeof(dev_path), "/dev/%s", disk);
+
+    if (!file_exists(dev_path)) {
+        log_message("Target device not found: %s", dev_path);
+        return;
+    }
+
+    // Check if device is mounted
+    char check_cmd[256];
+    snprintf(check_cmd, sizeof(check_cmd), "mount | grep -q '^%s'", dev_path);
+    if (system(check_cmd) == 0) {
+        log_message("Device %s is mounted. Attempting to unmount...", dev_path);
+        snprintf(check_cmd, sizeof(check_cmd), "umount %s* 2>/dev/null", dev_path);
+        run_command(check_cmd, 0);
+        sleep(1);
+    }
+
+    log_message("Creating partition table on %s...", dev_path);
+
+    // Clear existing partitions with multiple methods
+    char cmd[512];
+
+    // Method 1: sgdisk zap
+    snprintf(cmd, sizeof(cmd), "sgdisk --zap-all %s 2>/dev/null", dev_path);
+    if (run_command(cmd, 0) != 0) {
+        // Method 2: dd wipe partition table
+        log_message("sgdisk failed, trying alternative method...");
+        snprintf(cmd, sizeof(cmd), "dd if=/dev/zero of=%s bs=512 count=1 conv=notrunc 2>/dev/null", dev_path);
+        run_command(cmd, 0);
+
+        // Refresh kernel partition table
+        run_command("partprobe 2>/dev/null", 0);
+        sleep(2);
+    }
+
+    // Create GPT partition table
+    log_message("Creating GPT partition table...");
+    snprintf(cmd, sizeof(cmd), "sgdisk --clear %s", dev_path);
+    if (run_command(cmd, 0) != 0) {
+        log_message("Failed to create GPT, trying fallback...");
+        snprintf(cmd, sizeof(cmd), "parted -s %s mklabel gpt", dev_path);
+        run_command(cmd, 0);
+    }
+
+    // Create EFI partition (550MB)
+    log_message("Creating EFI system partition (550MB)...");
+    snprintf(cmd, sizeof(cmd), "sgdisk --new=1:0:+550M --typecode=1:ef00 %s", dev_path);
+    if (run_command(cmd, 0) != 0) {
+        snprintf(cmd, sizeof(cmd), "parted -s %s mkpart primary fat32 1MiB 551MiB", dev_path);
+        run_command(cmd, 0);
+        snprintf(cmd, sizeof(cmd), "parted -s %s set 1 esp on", dev_path);
+        run_command(cmd, 0);
+    }
+
+    // Create root partition (rest of disk)
+    log_message("Creating root partition...");
+    snprintf(cmd, sizeof(cmd), "sgdisk --new=2:0:0 --typecode=2:8304 %s", dev_path);
+    if (run_command(cmd, 0) != 0) {
+        snprintf(cmd, sizeof(cmd), "parted -s %s mkpart primary ext4 551MiB 100%%", dev_path);
+        run_command(cmd, 0);
+    }
+
+    // Update kernel partition table
+    log_message("Updating partition table...");
+    run_command_with_fallback("partprobe", "blockdev --rereadpt");
+    sleep(3);
+
+    // Verify partitions were created
+    char part1[32], part2[32];
+    if (strncmp(disk, "nvme", 4) == 0 || strncmp(disk, "vd", 2) == 0) {
+        snprintf(part1, sizeof(part1), "%sp1", dev_path);
+        snprintf(part2, sizeof(part2), "%sp2", dev_path);
+    } else {
+        snprintf(part1, sizeof(part1), "%s1", dev_path);
+        snprintf(part2, sizeof(part2), "%s2", dev_path);
+    }
+
+    int attempts = 0;
+    while ((!file_exists(part1) || !file_exists(part2)) && attempts < 15) {
+        log_message("Waiting for partitions to appear (attempt %d)...", attempts + 1);
+        sleep(1);
+        attempts++;
+        run_command("udevadm settle 2>/dev/null", 0);
+    }
+
+    if (!file_exists(part1) || !file_exists(part2)) {
+        log_message("Partition creation failed. Expected: %s, %s", part1, part2);
+        log_message("Trying manual check...");
+        snprintf(cmd, sizeof(cmd), "ls -la %s*", dev_path);
+        run_command(cmd, 1);
+    } else {
+        log_message("Partitions created successfully");
+    }
+}
+
+
+
+// Mount with retry logic
+int mount_with_retry(const char *source, const char *target, const char *fstype, unsigned long flags) {
+    int retries = 3;
+    int delay = 1;
+
+    while (retries > 0) {
+        if (mount(source, target, fstype, flags, NULL) == 0) {
+            return 0;
+        }
+
+        log_message("Mount failed (retry %d): %s", 4 - retries, strerror(errno));
+        retries--;
+        sleep(delay);
+        delay *= 2;
+    }
+
+    return -1;
+}
+
+
+
+// Secure wipe (optional)
+int secure_wipe(const char *device) {
+    log_message("Performing secure wipe on %s...", device);
+
+    // Quick wipe with dd (can be enhanced with multiple passes)
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "dd if=/dev/zero of=%s bs=1M count=10 status=progress 2>/dev/null", device);
+    return run_command(cmd, 1);
 }

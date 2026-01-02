@@ -1,14 +1,15 @@
 #ifndef TURBO_INSTALLER_H
 #define TURBO_INSTALLER_H
 
-#include "../system/system.h"
 
-// Turbo Install - одна кнопка, все автоматически
-int turbo_install(DiskInfo *disk);
+#include <ncurses.h>
 
-// Вспомогательные функции
-int auto_detect_internet(void);
-int auto_configure_system(void);
-int auto_install_packages(void);
+void perform_installation(const char *disk);
+
+
+extern WINDOW *log_win;
+extern WINDOW *status_win;
+
+extern volatile  int install_running;
 
 #endif

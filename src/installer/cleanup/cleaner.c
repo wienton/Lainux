@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <ncurses.h>
 
-#include "../system_utils/log_message.h"
-#include "../system_utils/run_command.h"
+#include "../utils/log_message.h"
+#include "../utils/run_command.h"
 #include "cleaner.h"
 
 // Emergency cleanup

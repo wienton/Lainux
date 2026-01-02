@@ -7,7 +7,8 @@
 #include "network.h"
 #include <fcntl.h>
 
-
+#include "../utils/log_message.h"
+#include "../utils/run_command.h"
 // check status network
 int check_network() {
     int sock;
@@ -80,4 +81,6 @@ NetStatus check_network_vibe() {
     close(sock);
     return status;
 }
+
+
 
