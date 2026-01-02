@@ -6,6 +6,8 @@
 
 // headers
 #include "ui.h"
+#include "../locale/lang.h"
+#include "../utils/run_command.h"
 
 // Initialize ncurses with error handling
 void init_ncurses() {
@@ -95,5 +97,91 @@ void display_status(const char *message) {
         box(status_win, 0, 0);
         mvwprintw(status_win, 1, 2, " STATUS: %s", message);
         wrefresh(status_win);
+    }
+}
+
+
+
+// Draw progress bar
+void draw_progress_bar(int y, int x, int width, float progress) {
+    int bars = (int)(progress * width);
+
+    attron(COLOR_PAIR(7));
+    mvprintw(y, x, "[");
+
+    attron(COLOR_PAIR(2));
+    for (int i = 0; i < bars; i++) {
+        addch('=');
+    }
+
+    attron(COLOR_PAIR(7));
+    for (int i = bars; i < width; i++) {
+        addch(' ');
+    }
+    addch(']');
+
+    mvprintw(y, x + width + 2, "%3d%%", (int)(progress * 100));
+    attroff(COLOR_PAIR(7));
+}
+
+
+
+// Show installation summary
+void show_summary(const char *disk) {
+    clear();
+
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+
+    int center_x = max_x / 2 - 25;
+
+    attron(A_BOLD | COLOR_PAIR(1));
+
+    mvprintw(3, center_x, "│         %s   │", _("INSTALL_COMPLETE"));
+    attroff(A_BOLD | COLOR_PAIR(1));
+
+    mvprintw(6, center_x + 5, "Lainux has been successfully installed!");
+
+    mvprintw(8, center_x + 5, "Installation target:");
+    attron(COLOR_PAIR(2));
+    mvprintw(9, center_x + 5, "  /dev/%s", disk);
+    attroff(COLOR_PAIR(2));
+
+    mvprintw(11, center_x + 5, "Default credentials:");
+    mvprintw(12, center_x + 10, "Username: root");
+    mvprintw(13, center_x + 10, "Password: lainux");
+
+    mvprintw(14, center_x + 10, "Username: lainux");
+    mvprintw(15, center_x + 10, "Password: lainux");
+
+    attron(COLOR_PAIR(3) | A_BOLD);
+    mvprintw(17, center_x + 5, "⚠ Remove installation media before rebooting!");
+    attroff(COLOR_PAIR(3) | A_BOLD);
+
+    mvprintw(19, center_x + 5, "Next steps:");
+    mvprintw(20, center_x + 10, "1. Remove installation media");
+    mvprintw(21, center_x + 10, "2. Reboot the system");
+    mvprintw(22, center_x + 10, "3. Log in with credentials above");
+    mvprintw(23, center_x + 10, "4. Run 'lainux-setup' for post-installation");
+
+    mvprintw(25, center_x + 5, "Press R to reboot now");
+    mvprintw(26, center_x + 5, "Press Q to shutdown installer");
+    mvprintw(27, center_x + 5, "Press any other key to return to menu");
+
+    while (1) {
+        int ch = getch();
+        if (ch == 'r' || ch == 'R') {
+            if (confirm_action("Reboot system now?", "REBOOT")) {
+                run_command("reboot", 0);
+            }
+            break;
+        } else if (ch == 'q' || ch == 'Q') {
+            if (confirm_action("Exit installer?", "EXIT")) {
+                endwin();
+                exit(0);
+            }
+        } else {
+            break;
+        }
     }
 }

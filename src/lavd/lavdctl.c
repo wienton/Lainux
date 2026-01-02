@@ -1,5 +1,14 @@
-// lavd manager
-// only for nvidia
+/**
+ * @file lavdctl.c
+ * @author wienton
+ * @brief lavd multi task manager for GPU(Nvidia)
+ * @version 0.1
+ * @date 2026-01-02
+ *
+ * @copyright Copyright (c) 2026
+ *
+ */
+
 
 #include <stdio.h>
 #include <stdlib.h>

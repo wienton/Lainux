@@ -8,5 +8,6 @@ int file_exists(const char *path);
 int check_filesystem(const char *path);
 long get_available_space(const char *path);
 void check_system_requirements();
+void show_hardware_info();
 
 #endif

@@ -3,11 +3,11 @@
 * @version v0.3 beta only
 * @author Wienton | Lainux Development Laboratory
 * @license: GPL-3.0
-* @details contact with general developer LainuxOS and this installer you can from telegram @openrtc
-* @status: STATUS WORK **TRUE**
+* @details contact with general developer LainuxOS and this installer you can from telegram  @adaxies
+* @status: 1
 * @also: download iso from github release for virtual machine.
 
-  @hosting: codeberg
+  @hosting: codeberg, github
 */
 
 #include <ncurses.h>
@@ -22,11 +22,8 @@
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
 #include <time.h>
-#include <locale.h>
 #include <dirent.h>
-#include <errno.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <pthread.h>
 #include <curl/curl.h>
 #include <ctype.h>
@@ -35,26 +32,21 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
-#include "../utils/network_connection/network_sniffer.h"
-#include "../utils/network_connection/network_state.h"
-#include "vm/vm.h"
 // general header for installer
 
 #include "include/installer.h"
 
 #include "utils/log_message.h"
 #include "utils/run_command.h"
-#include "disk_utils/disk_info.h"
 #include "locale/lang.h"
-#include "settings/settings.h"
 #include "turbo/turbo_installer.h"
 #include "cleanup/cleaner.h"
 
 // ui
 #include "ui/ui.h"
 
-#define LINK_ISO ""
-#define PACKAGE_LINK ""
+#define LINK_ISO "" // TODO: ADD LINK FOR ISO FOR DOWNLOAD
+#define PACKAGE_LINK "" // TODO: ADD PACKAGE LINKS FOR DOWNLOAD
 
 // Global variables
 WINDOW *log_win;
@@ -215,136 +207,6 @@ void get_hardware_details(char *cpu_info, char *memory_info, char *gpu_info, cha
     } else {
         strcpy(storage_info, "No disks detected");
     }
-}
-
-// Enhanced hardware information display
-void show_hardware_info() {
-    SystemInfo sys_info;
-    get_system_info(&sys_info);
-
-    char cpu_info[128], memory_info[32], gpu_info[128], storage_info[64];
-    get_hardware_details(cpu_info, memory_info, gpu_info, storage_info);
-
-    clear();
-
-    // Title with border
-    attron(A_BOLD | COLOR_PAIR(1));
-    mvprintw(1, 5, "╔══════════════════════════════════════════════════════╗");
-    mvprintw(2, 5, "║               HARDWARE INFORMATION                  ║");
-    mvprintw(3, 5, "╚══════════════════════════════════════════════════════╝");
-    attroff(A_BOLD | COLOR_PAIR(1));
-
-    // System overview
-    attron(A_BOLD);
-    mvprintw(5, 10, "System Overview:");
-    attroff(A_BOLD);
-
-    mvprintw(6, 15, "Hostname: ");
-    attron(COLOR_PAIR(2));
-    printw("%s", sys_info.hostname);
-    attroff(COLOR_PAIR(2));
-
-    mvprintw(7, 15, "Architecture: ");
-    attron(COLOR_PAIR(2));
-    printw("%s", sys_info.arch);
-    attroff(COLOR_PAIR(2));
-
-    mvprintw(8, 15, "Kernel: ");
-    attron(COLOR_PAIR(2));
-    printw("%s", sys_info.kernel);
-    attroff(COLOR_PAIR(2));
-
-    // CPU Information
-    attron(A_BOLD);
-    mvprintw(10, 10, "CPU:");
-    attroff(A_BOLD);
-    mvprintw(10, 25, "%s", cpu_info);
-    mvprintw(11, 25, "Cores: %d physical, %d logical", sys_info.avail_cores, sys_info.total_cores);
-
-    // Memory Information
-    attron(A_BOLD);
-    mvprintw(13, 10, "Memory:");
-    attroff(A_BOLD);
-    mvprintw(13, 25, "%s RAM", memory_info);
-    mvprintw(14, 25, "Available: %ld MB / %ld MB", sys_info.avail_ram, sys_info.total_ram);
-
-    // GPU Information
-    attron(A_BOLD);
-    mvprintw(16, 10, "Graphics:");
-    attroff(A_BOLD);
-    mvprintw(16, 25, "%s", gpu_info);
-
-    // Storage Information
-    attron(A_BOLD);
-    mvprintw(18, 10, "Storage:");
-    attroff(A_BOLD);
-    mvprintw(18, 25, "%s", storage_info);
-
-    // Advanced Information
-    attron(A_BOLD);
-    mvprintw(20, 10, "Advanced:");
-    attroff(A_BOLD);
-
-    // Check virtualization support
-    FILE* fp = popen("grep -E '(vmx|svm)' /proc/cpuinfo 2>/dev/null | head -1", "r");
-    if (fp) {
-        char buffer[256];
-        if (fgets(buffer, sizeof(buffer), fp)) {
-            mvprintw(21, 15, "Virtualization: ");
-            attron(COLOR_PAIR(2));
-            printw("Supported (KVM available)");
-            attroff(COLOR_PAIR(2));
-        } else {
-            mvprintw(21, 15, "Virtualization: ");
-            attron(COLOR_PAIR(3));
-            printw("Not available");
-            attroff(COLOR_PAIR(3));
-        }
-        pclose(fp);
-    }
-
-    // UEFI/BIOS detection
-    if (verify_efi()) {
-        mvprintw(22, 15, "Firmware: ");
-        attron(COLOR_PAIR(2));
-        printw("UEFI");
-        attroff(COLOR_PAIR(2));
-    } else {
-        mvprintw(22, 15, "Firmware: ");
-        attron(COLOR_PAIR(4));
-        printw("Legacy BIOS");
-        attroff(COLOR_PAIR(4));
-    }
-
-    // Show uptime
-    fp = popen("uptime -p 2>/dev/null || uptime 2>/dev/null", "r");
-    if (fp) {
-        char uptime[64];
-        if (fgets(uptime, sizeof(uptime), fp)) {
-            uptime[strcspn(uptime, "\n")] = 0;
-            mvprintw(23, 15, "Uptime: %s", uptime);
-        }
-        pclose(fp);
-    }
-
-    // Show load average
-    fp = popen("cat /proc/loadavg | cut -d' ' -f1-3", "r");
-    if (fp) {
-        char load[32];
-        if (fgets(load, sizeof(load), fp)) {
-            load[strcspn(load, "\n")] = 0;
-            mvprintw(24, 15, "Load avg: %s", load);
-        }
-        pclose(fp);
-    }
-
-    // Footer
-    attron(COLOR_PAIR(7) | A_BOLD);
-    mvprintw(26, 5, "Press any key to continue...");
-    attroff(COLOR_PAIR(7) | A_BOLD);
-
-    refresh();
-    getch();
 }
 
 // Download Arch Linux ISO with progress
@@ -508,7 +370,6 @@ void select_iso_file(char *iso_path, size_t size) {
                     struct timespec ts = {0, 10000000}; // 10ms
                     nanosleep(&ts, NULL);
 
-                    // Try to join with zero timeout (non-portable, but works on Linux)
                     void *result;
                     #ifdef __linux__
                     usleep(100000);
@@ -628,27 +489,6 @@ void select_iso_file(char *iso_path, size_t size) {
     }
 }
 
-// Draw progress bar
-void draw_progress_bar(int y, int x, int width, float progress) {
-    int bars = (int)(progress * width);
-
-    attron(COLOR_PAIR(7));
-    mvprintw(y, x, "[");
-
-    attron(COLOR_PAIR(2));
-    for (int i = 0; i < bars; i++) {
-        addch('=');
-    }
-
-    attron(COLOR_PAIR(7));
-    for (int i = bars; i < width; i++) {
-        addch(' ');
-    }
-    addch(']');
-
-    mvprintw(y, x + width + 2, "%3d%%", (int)(progress * 100));
-    attroff(COLOR_PAIR(7));
-}
 
 // Select configuration
 void select_configuration() {
@@ -753,435 +593,4 @@ void select_configuration() {
             break;
         }
     }
-}
-
-// Show installation summary
-void show_summary(const char *disk) {
-    clear();
-
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-
-    int center_x = max_x / 2 - 25;
-
-    attron(A_BOLD | COLOR_PAIR(1));
-
-    mvprintw(3, center_x, "│         %s   │", _("INSTALL_COMPLETE"));
-    attroff(A_BOLD | COLOR_PAIR(1));
-
-    mvprintw(6, center_x + 5, "Lainux has been successfully installed!");
-
-    mvprintw(8, center_x + 5, "Installation target:");
-    attron(COLOR_PAIR(2));
-    mvprintw(9, center_x + 5, "  /dev/%s", disk);
-    attroff(COLOR_PAIR(2));
-
-    mvprintw(11, center_x + 5, "Default credentials:");
-    mvprintw(12, center_x + 10, "Username: root");
-    mvprintw(13, center_x + 10, "Password: lainux");
-
-    mvprintw(14, center_x + 10, "Username: lainux");
-    mvprintw(15, center_x + 10, "Password: lainux");
-
-    attron(COLOR_PAIR(3) | A_BOLD);
-    mvprintw(17, center_x + 5, "⚠ Remove installation media before rebooting!");
-    attroff(COLOR_PAIR(3) | A_BOLD);
-
-    mvprintw(19, center_x + 5, "Next steps:");
-    mvprintw(20, center_x + 10, "1. Remove installation media");
-    mvprintw(21, center_x + 10, "2. Reboot the system");
-    mvprintw(22, center_x + 10, "3. Log in with credentials above");
-    mvprintw(23, center_x + 10, "4. Run 'lainux-setup' for post-installation");
-
-    mvprintw(25, center_x + 5, "Press R to reboot now");
-    mvprintw(26, center_x + 5, "Press Q to shutdown installer");
-    mvprintw(27, center_x + 5, "Press any other key to return to menu");
-
-    while (1) {
-        int ch = getch();
-        if (ch == 'r' || ch == 'R') {
-            if (confirm_action("Reboot system now?", "REBOOT")) {
-                run_command("reboot", 0);
-            }
-            break;
-        } else if (ch == 'q' || ch == 'Q') {
-            if (confirm_action("Exit installer?", "EXIT")) {
-                endwin();
-                exit(0);
-            }
-        } else {
-            break;
-        }
-    }
-}
-// Функция для отображения меню выбора конфигурации через ncurses
-void show_configuration_menu(void) {
-    // Инициализация Lua
-    lua_State *L = luaL_newstate();
-    luaL_openlibs(L);
-
-    // Загрузка конфигурационного файла
-    if (luaL_dofile(L, "src/installer/configs/config.lua") != LUA_OK) {
-        log_message("Lua error: %s", lua_tostring(L, -1));
-        lua_close(L);
-        return;
-    }
-
-    // Получение списка конфигураций
-    lua_getglobal(L, "get_configurations_list");
-    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
-        log_message("Lua error: %s", lua_tostring(L, -1));
-        lua_close(L);
-        return;
-    }
-
-    if (!lua_istable(L, -1)) {
-        log_message("No configurations found");
-        lua_close(L);
-        return;
-    }
-
-    int config_count = luaL_len(L, -1);
-    if (config_count == 0) {
-        log_message("Configuration list is empty");
-        lua_close(L);
-        return;
-    }
-
-    // Отображение меню через ncurses
-    int selected = 0;
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-
-    while (1) {
-        clear();
-
-        // Заголовок
-        attron(A_BOLD | COLOR_PAIR(1));
-        mvprintw(2, (max_x - 25) / 2, "SELECT CONFIGURATION");
-        attroff(A_BOLD | COLOR_PAIR(1));
-
-        mvprintw(4, 10, "Use UP/DOWN arrows to navigate, ENTER to select");
-
-        // Отображение конфигураций
-        for (int i = 0; i < config_count; i++) {
-            lua_rawgeti(L, -1, i + 1); // Lua индексы с 1
-
-            // Получение данных конфигурации
-            lua_getfield(L, -1, "name");
-            const char *name = lua_tostring(L, -1);
-            lua_pop(L, 1);
-
-            lua_getfield(L, -1, "description");
-            const char *desc = lua_tostring(L, -1);
-            lua_pop(L, 1);
-
-            lua_getfield(L, -1, "size");
-            const char *size = lua_tostring(L, -1);
-            lua_pop(L, 1);
-
-            // Отображение
-            int y_pos = 6 + i * 3;
-
-            if (i == selected) {
-                // Выделенный элемент
-                attron(A_REVERSE | COLOR_PAIR(2));
-                mvprintw(y_pos, 12, "> %-20s %-10s", name, size);
-                attroff(A_REVERSE | COLOR_PAIR(2));
-
-                // Описание выделенного элемента
-                attron(COLOR_PAIR(3));
-                mvprintw(y_pos + 1, 15, "%s", desc);
-                attroff(COLOR_PAIR(3));
-
-                // Особенности
-                lua_getfield(L, -1, "features");
-                if (lua_istable(L, -1)) {
-                    int feature_y = y_pos + 2;
-                    mvprintw(feature_y, 15, "Features: ");
-
-                    int feature_count = luaL_len(L, -1);
-                    for (int f = 0; f < feature_count && f < 3; f++) {
-                        lua_rawgeti(L, -1, f + 1);
-                        const char *feature = lua_tostring(L, -1);
-                        if (f > 0) printw(", ");
-                        printw("%s", feature);
-                        lua_pop(L, 1);
-                    }
-                }
-                lua_pop(L, 1);
-            } else {
-                // Невыделенный элемент
-                attron(COLOR_PAIR(7));
-                mvprintw(y_pos, 14, "%-20s %-10s", name, size);
-                attroff(COLOR_PAIR(7));
-            }
-
-            lua_pop(L, 1); // Убираем конфигурацию из стека
-        }
-
-        // Инструкции
-        attron(COLOR_PAIR(4));
-        mvprintw(max_y - 3, 10, "ENTER: Select  ESC: Cancel");
-        attroff(COLOR_PAIR(4));
-
-        refresh();
-
-        // Обработка ввода
-        int ch = getch();
-        switch (ch) {
-            case KEY_UP:
-                selected = (selected > 0) ? selected - 1 : config_count - 1;
-                break;
-            case KEY_DOWN:
-                selected = (selected < config_count - 1) ? selected + 1 : 0;
-                break;
-            case 10: // Enter - выбор
-                {
-                    // Получаем ID выбранной конфигурации
-                    lua_rawgeti(L, -1, selected + 1);
-                    lua_getfield(L, -1, "id");
-                    const char *selected_id = lua_tostring(L, -1);
-
-                    // Сохраняем выбор
-                    log_message("Selected configuration: %s", selected_id);
-
-                    // Закрываем Lua
-                    lua_close(L);
-
-                    // Возвращаемся или продолжаем установку
-                    return;
-                }
-                break;
-            case 27: // ESC - отмена
-                lua_close(L);
-                return;
-        }
-    }
-
-    lua_close(L);
-}
-
-// Main application
-int main() {
-    select_language();
-    // Set up signal handlers
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-
-    // Initialize curl globally
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-
-    // Initialize ncurses
-    init_ncurses();
-
-
-    char target_disk[32] = "";
-    int menu_selection = 0;
-
-    const char *menu_items[] = {
-        _("INSTALL_ON_HARDWARE"),    // 0
-        _("INSTALL_ON_VM"),          // 1
-        _("HARDWARE_INFO"),          // 2
-        _("SYSTEM_REQUIREMENTS"),    // 3
-        _("CONF_SELECTION"),         // 4
-        _("DISK_INFO"),              // 5
-        _("SETTINGS"),               // 6
-        _("EXIT_INSTALLER")          // 7
-    };
-
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-    int center_x = max_x / 2;
-
-    while (1) {
-        clear();
-
-        // Show Lainux logo
-        show_logo();
-
-        // Version and system info
-        attron(COLOR_PAIR(7));
-        int info1_x = (max_x - (int)strlen("Version v0.1 | UEFI Ready | Secure Boot Compatible")) / 2;
-
-        attron(COLOR_PAIR(7));
-        mvprintw(16, info1_x, "Version v0.1 | UEFI Ready | Secure Boot Compatible");
-        attroff(COLOR_PAIR(7));
-
-        // Display current time
-        time_t now = time(NULL);
-        struct tm *tm_info = localtime(&now);
-        char time_str[32];
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
-        int time_x = (max_x - (int)strlen("System time: 2025-12-25 23:59:59")) / 2;
-        mvprintw(19, time_x, "System time: %s", time_str);
-        attroff(COLOR_PAIR(7));
-
-        int menu_count = sizeof(menu_items) / sizeof(menu_items[0]); // = 8
-
-        int max_item_len = 0;
-        for (int i = 0; i < menu_count; i++) {
-            int len = strlen(menu_items[i]);
-            if (len > max_item_len) max_item_len = len;
-        }
-
-        int menu_width = max_item_len + 4;
-        int menu_start_x = (max_x - menu_width) / 2;
-
-        for (int i = 0; i < menu_count; i++) {
-            if (i == menu_selection) {
-                // Highlight current selection with different colors
-                if (i == 0) {
-                    attron(A_REVERSE | COLOR_PAIR(2));  // Green for install
-                } else if (i == 1) {
-                    attron(A_REVERSE | COLOR_PAIR(4));  // Yellow for VM
-                } else if (i == 2 || i == 3) {
-                    attron(A_REVERSE | COLOR_PAIR(5));  // Magenta for info
-                } else if (i == 4) {
-                    attron(A_REVERSE | COLOR_PAIR(6));  // Blue for config
-                } else if (i == 5) {
-                    attron(A_REVERSE | COLOR_PAIR(7));  // White for disk info
-                } else if (i == 6) {
-                    attron(A_REVERSE | COLOR_PAIR(4));  // Yellow for settings
-                } else if (i == 7) {
-                    attron(A_REVERSE | COLOR_PAIR(3));  // Red for exit
-                }
-                mvprintw(22 + i * 2, menu_start_x, "› %s", menu_items[i]);
-
-                // Turn off attributes
-                if (i == 0) {
-                    attroff(A_REVERSE | COLOR_PAIR(2));
-                } else if (i == 1) {
-                    attroff(A_REVERSE | COLOR_PAIR(4));
-                } else if (i == 2 || i == 3) {
-                    attroff(A_REVERSE | COLOR_PAIR(5));
-                } else if (i == 4) {
-                    attroff(A_REVERSE | COLOR_PAIR(6));
-                } else if (i == 5) {
-                    attroff(A_REVERSE | COLOR_PAIR(7));
-                } else if (i == 6) {
-                    attroff(A_REVERSE | COLOR_PAIR(4));
-                } else if (i == 7) {
-                    attroff(A_REVERSE | COLOR_PAIR(3));
-                }
-            } else {
-                // Normal display with colors
-                if (i == 0) {
-                    attron(COLOR_PAIR(2));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(2));
-                } else if (i == 1) {
-                    attron(COLOR_PAIR(4));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(4));
-                } else if (i == 2 || i == 3) {
-                    attron(COLOR_PAIR(5));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(5));
-                } else if (i == 4) {
-                    attron(COLOR_PAIR(6));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(6));
-                } else if (i == 5) {
-                    attron(COLOR_PAIR(7));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(7));
-                } else if (i == 6) {
-                    attron(COLOR_PAIR(4));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(4));
-                } else if (i == 7) {
-                    attron(COLOR_PAIR(3));
-                    mvprintw(22 + i * 2, menu_start_x + 2, "%s", menu_items[i]);
-                    attroff(COLOR_PAIR(3));
-                }
-            }
-        }
-
-        // Show system architecture
-        FILE *fp = popen("uname -m", "r");
-        char arch[32];
-        if (fp) {
-            fgets(arch, sizeof(arch), fp);
-            arch[strcspn(arch, "\n")] = 0;
-            pclose(fp);
-        }
-
-        // Show kernel version
-        fp = popen("uname -r | cut -d- -f1", "r");
-        char kernel[32];
-        if (fp) {
-            fgets(kernel, sizeof(kernel), fp);
-            kernel[strcspn(kernel, "\n")] = 0;
-            pclose(fp);
-        }
-        attroff(COLOR_PAIR(7));
-
-        // navigate for center
-        int nav_x = (max_x - (int)strlen("Navigate: ↑ ↓ • Select: Enter • Exit: Esc")) / 2;
-        mvprintw(max_y - 3, nav_x, "Navigate: ↑ ↓ • Select: Enter • Exit: Esc");
-
-        // system info -- right
-        int right_col = max_x - 30; // 30 symbols with right
-
-        mvprintw(max_y - 3, right_col, "Arch: %s", arch);
-        mvprintw(max_y - 2, right_col, "Kernel: %s", kernel);
-        mvprintw(max_y - 1, right_col, "Built with: GCC %s", __VERSION__);
-
-        int input = getch();
-        switch (input) {
-            case KEY_UP:
-                menu_selection = (menu_selection > 0) ? menu_selection - 1 : 7;
-                break;
-            case KEY_DOWN:
-                menu_selection = (menu_selection < 7) ? menu_selection + 1 : 0;
-                break;
-            case 10: // Enter
-                switch (menu_selection) {
-                    case 0: // Install on Hardware
-                        get_target_disk(target_disk, sizeof(target_disk));
-                        if (strlen(target_disk) > 0) {
-                            perform_installation(target_disk);
-                        }
-                        break;
-                    case 1: // Install on VM
-                        install_on_virtual_machine();
-                        break;
-                    case 2: // Hardware Information
-                        show_hardware_info();
-                        break;
-                    case 3: // System Requirements Check
-                        check_system_requirements();
-                        break;
-                    case 4: // Configuration Selection
-                        show_configuration_menu();
-                        break;
-                    case 5: // Disk Info
-                        show_disk_info();
-                        break;
-                    case 6: // Settings
-                        clear();
-                        print_settings();
-                        break;
-                    case 7: // Exit
-                        if (confirm_action("Exit Lainux installer?", "EXIT")) {
-                            cleanup_ncurses();
-                            curl_global_cleanup();
-                            return 0;
-                        }
-                        break;
-                }
-                break;
-            case 27: // Escape
-                if (confirm_action("Exit Lainux installer?", "EXIT")) {
-                    cleanup_ncurses();
-                    curl_global_cleanup();
-                    return 0;
-                }
-                break;
-        }
-    }
-    cleanup_ncurses();
-    curl_global_cleanup();
-    return 0;
 }

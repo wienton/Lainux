@@ -205,3 +205,135 @@ void check_system_requirements() {
     refresh();
     getch();
 }
+
+
+
+// Enhanced hardware information display
+void show_hardware_info() {
+    SystemInfo sys_info;
+    get_system_info(&sys_info);
+
+    char cpu_info[128], memory_info[32], gpu_info[128], storage_info[64];
+    get_hardware_details(cpu_info, memory_info, gpu_info, storage_info);
+
+    clear();
+
+    // Title with border
+    attron(A_BOLD | COLOR_PAIR(1));
+    mvprintw(1, 5, "╔══════════════════════════════════════════════════════╗");
+    mvprintw(2, 5, "║               HARDWARE INFORMATION                  ║");
+    mvprintw(3, 5, "╚══════════════════════════════════════════════════════╝");
+    attroff(A_BOLD | COLOR_PAIR(1));
+
+    // System overview
+    attron(A_BOLD);
+    mvprintw(5, 10, "System Overview:");
+    attroff(A_BOLD);
+
+    mvprintw(6, 15, "Hostname: ");
+    attron(COLOR_PAIR(2));
+    printw("%s", sys_info.hostname);
+    attroff(COLOR_PAIR(2));
+
+    mvprintw(7, 15, "Architecture: ");
+    attron(COLOR_PAIR(2));
+    printw("%s", sys_info.arch);
+    attroff(COLOR_PAIR(2));
+
+    mvprintw(8, 15, "Kernel: ");
+    attron(COLOR_PAIR(2));
+    printw("%s", sys_info.kernel);
+    attroff(COLOR_PAIR(2));
+
+    // CPU Information
+    attron(A_BOLD);
+    mvprintw(10, 10, "CPU:");
+    attroff(A_BOLD);
+    mvprintw(10, 25, "%s", cpu_info);
+    mvprintw(11, 25, "Cores: %d physical, %d logical", sys_info.avail_cores, sys_info.total_cores);
+
+    // Memory Information
+    attron(A_BOLD);
+    mvprintw(13, 10, "Memory:");
+    attroff(A_BOLD);
+    mvprintw(13, 25, "%s RAM", memory_info);
+    mvprintw(14, 25, "Available: %ld MB / %ld MB", sys_info.avail_ram, sys_info.total_ram);
+
+    // GPU Information
+    attron(A_BOLD);
+    mvprintw(16, 10, "Graphics:");
+    attroff(A_BOLD);
+    mvprintw(16, 25, "%s", gpu_info);
+
+    // Storage Information
+    attron(A_BOLD);
+    mvprintw(18, 10, "Storage:");
+    attroff(A_BOLD);
+    mvprintw(18, 25, "%s", storage_info);
+
+    // Advanced Information
+    attron(A_BOLD);
+    mvprintw(20, 10, "Advanced:");
+    attroff(A_BOLD);
+
+    // Check virtualization support
+    FILE* fp = popen("grep -E '(vmx|svm)' /proc/cpuinfo 2>/dev/null | head -1", "r");
+    if (fp) {
+        char buffer[256];
+        if (fgets(buffer, sizeof(buffer), fp)) {
+            mvprintw(21, 15, "Virtualization: ");
+            attron(COLOR_PAIR(2));
+            printw("Supported (KVM available)");
+            attroff(COLOR_PAIR(2));
+        } else {
+            mvprintw(21, 15, "Virtualization: ");
+            attron(COLOR_PAIR(3));
+            printw("Not available");
+            attroff(COLOR_PAIR(3));
+        }
+        pclose(fp);
+    }
+
+    // UEFI/BIOS detection
+    if (verify_efi()) {
+        mvprintw(22, 15, "Firmware: ");
+        attron(COLOR_PAIR(2));
+        printw("UEFI");
+        attroff(COLOR_PAIR(2));
+    } else {
+        mvprintw(22, 15, "Firmware: ");
+        attron(COLOR_PAIR(4));
+        printw("Legacy BIOS");
+        attroff(COLOR_PAIR(4));
+    }
+
+    // Show uptime
+    fp = popen("uptime -p 2>/dev/null || uptime 2>/dev/null", "r");
+    if (fp) {
+        char uptime[64];
+        if (fgets(uptime, sizeof(uptime), fp)) {
+            uptime[strcspn(uptime, "\n")] = 0;
+            mvprintw(23, 15, "Uptime: %s", uptime);
+        }
+        pclose(fp);
+    }
+
+    // Show load average
+    fp = popen("cat /proc/loadavg | cut -d' ' -f1-3", "r");
+    if (fp) {
+        char load[32];
+        if (fgets(load, sizeof(load), fp)) {
+            load[strcspn(load, "\n")] = 0;
+            mvprintw(24, 15, "Load avg: %s", load);
+        }
+        pclose(fp);
+    }
+
+    // Footer
+    attron(COLOR_PAIR(7) | A_BOLD);
+    mvprintw(26, 5, "Press any key to continue...");
+    attroff(COLOR_PAIR(7) | A_BOLD);
+
+    refresh();
+    getch();
+}
