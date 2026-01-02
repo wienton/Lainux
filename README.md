@@ -2,7 +2,7 @@
 ![Lainux Logo](https://raw.githubusercontent.com/wienton/lainux/main/assets/lain_background.jpg) -->
 
 <div align="center">
-  <img src="(https://raw.githubusercontent.com/wienton/lainux/main/assets/lain_background.jpg" alt="LainuxOS Banner" width="700"/>
+  <img src="https://raw.githubusercontent.com/wienton/lainux/main/assets/lain_background.jpg" alt="LainuxOS Banner" width="700"/>
 
   <br>
 
@@ -12,10 +12,10 @@
 
   <br>
 
-  ![GitHub last commit](https://img.shields.io/github/last-commit/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
-  ![GitHub stars](https://img.shields.io/github/stars/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
-  ![GitHub forks](https://img.shields.io/github/forks/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
-  ![License](https://img.shields.io/github/license/YourGitHubUsername/LainuxOS?style=flat-square&color=800080)
+  ![GitHub last commit](https://img.shields.io/github/last-commit/wienton/lainux?style=flat-square&color=800080)
+  ![GitHub stars](https://img.shields.io/github/stars/wienton/lainux?style=flat-square&color=800080)
+  ![GitHub forks](https://img.shields.io/github/forks/wienton/lainux?style=flat-square&color=800080)
+  ![License](https://img.shields.io/github/license/wienton/lainux?style=flat-square&color=800080)
 
   ---
 </div>
