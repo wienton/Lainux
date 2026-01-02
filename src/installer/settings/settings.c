@@ -25,19 +25,19 @@ void apply_language(Language lang) {
 
 const char* get_theme_name(void) {
     switch (settings.theme) {
-        case 0: return _("THEME_LIGHT");
-        case 1: return _("THEME_DARK");
-        case 2: return _("THEME_SYSTEM");
-        default: return _("THEME_DARK");
+        case 0: return get_text("THEME_LIGHT");
+        case 1: return get_text("THEME_DARK");
+        case 2: return get_text("THEME_SYSTEM");
+        default: return get_text("THEME_DARK");
     }
 }
 
 const char* get_keyboard_name(void) {
-    return (settings.keyboard_layout == 0) ? _("KB_EN") : _("KB_RU");
+    return (settings.keyboard_layout == 0) ? get_text("KB_EN") : get_text("KB_RU");
 }
 
 const char* get_network_mode_name(void) {
-    return (settings.network_mode == 0) ? _("NET_DHCP") : _("NET_STATIC");
+    return (settings.network_mode == 0) ? get_text("NET_DHCP") : get_text("NET_STATIC");
 }
 
 // general function - interactive settings approve
@@ -55,17 +55,17 @@ void print_settings(void) {
 
         // header
         attron(A_BOLD | COLOR_PAIR(1));
-        mvprintw(start_y, start_x + 15, "%s", _("SETTINGS_TITLE"));
+        mvprintw(start_y, start_x + 15, "%s", get_text("SETTINGS_TITLE"));
         mvprintw(start_y + 1, start_x, "----------------------------------------------------");
         attroff(A_BOLD | COLOR_PAIR(1));
 
         // pointers menu
         const char* items[] = {
-            _("LANG_SETTING"),
-            _("THEME_SETTING"),
-            _("KEYBOARD_SETTING"),
-            _("NETWORK_SETTING"),
-            _("BACK_TO_MAIN")
+            get_text("LANG_SETTING"),
+            get_text("THEME_SETTING"),
+            get_text("KEYBOARD_SETTING"),
+            get_text("NETWORK_SETTING"),
+            get_text("BACK_TO_MAIN")
         };
 
         for (int i = 0; i < total_items; i++) {

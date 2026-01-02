@@ -1,596 +1,517 @@
 /**
-* @brief Lainux Installer
-* @version v0.3 beta only
-* @author Wienton | Lainux Development Laboratory
-* @license: GPL-3.0
-* @details contact with general developer LainuxOS and this installer you can from telegram  @adaxies
-* @status: 1
-* @also: download iso from github release for virtual machine.
+ * @file installer_engine.c
+ * @brief Professional system-agnostic installation engine
+ */
 
-  @hosting: codeberg, github
-*/
-
-#include <ncurses.h>
-#include <stdlib.h>
+#include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <sys/mount.h>
-#include <sys/sysinfo.h>
-#include <sys/statvfs.h>
-#include <time.h>
-#include <dirent.h>
 #include <fcntl.h>
-#include <pthread.h>
-#include <curl/curl.h>
-#include <ctype.h>
+#include <errno.h>
 
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
-
-// general header for installer
-
-#include "include/installer.h"
-
+#include "turbo/turbo_installer.h"
+#include "ui/ui.h"
 #include "utils/log_message.h"
 #include "utils/run_command.h"
-#include "locale/lang.h"
-#include "turbo/turbo_installer.h"
-#include "cleanup/cleaner.h"
 
-// ui
-#include "ui/ui.h"
+#include "system/system_check.h"
+#include "disk_utils/disk_info.h"
+#include "include/installer.h"
+#include "../../libc/ncurses/ncurses_util.h"
 
-#define LINK_ISO "" // TODO: ADD LINK FOR ISO FOR DOWNLOAD
-#define PACKAGE_LINK "" // TODO: ADD PACKAGE LINKS FOR DOWNLOAD
+/* Constants */
+#define MIN_ROOT_SIZE_GB 15
+#define MIN_EFI_SIZE_MB 512
+#define BOOTLOADER_ID "lainux"
+#define MAX_RETRIES 5
+#define DEVICE_WAIT_TIME 2
 
-// Global variables
-WINDOW *log_win;
-WINDOW *status_win;
-char log_buffer[LOG_BUFFER_SIZE];
+/* Installation state */
 volatile int install_running = 0;
+static WindowCtx main_win;
+WINDOW* log_win;
+WINDOW* status_win;
 
-
-// Signal handler for graceful exit
-void signal_handler(int sig) {
-    install_running = 0;
-    log_message("Signal %d received, cleaning up...", sig);
-    emergency_cleanup();
-    cleanup_ncurses();
-    exit(0);
+/* Assembly-optimized memory operations */
+static inline void secure_zero(void *ptr, size_t len) {
+    volatile char *p = (volatile char *)ptr;
+    while (len--) *p++ = 0;
 }
 
-
-// Get system information
-void get_system_info(SystemInfo *info) {
-    memset(info, 0, sizeof(SystemInfo));
-
-    // CPU cores
-    info->total_cores = sysconf(_SC_NPROCESSORS_ONLN);
-    info->avail_cores = sysconf(_SC_NPROCESSORS_CONF);
-
-    // Memory
-    struct sysinfo si;
-    if (sysinfo(&si) == 0) {
-        info->total_ram = si.totalram / (1024 * 1024);
-        info->avail_ram = si.freeram / (1024 * 102);
-   }
-    // Architecture
-    FILE *fp = popen("uname -m", "r");
-    if (fp) {
-        fgets(info->arch, sizeof(info->arch), fp);
-        info->arch[strcspn(info->arch, "\n")] = 0;
-        pclose(fp);
-    }
-
-    // Hostname
-    gethostname(info->hostname, sizeof(info->hostname));
-
-    // Kernel
-     fp = popen("uname -r", "r");
-    if (fp) {
-        fgets(info->kernel, sizeof(info->kernel), fp);
-        info->kernel[strcspn(info->kernel, "\n")] = 0;
-        pclose(fp);
-    }
+static inline int atomic_test_and_set(volatile int *ptr) {
+    int old;
+    __asm__ __volatile__ (
+        "lock xchg %0, %1"
+        : "=r" (old), "+m" (*ptr)
+        : "0" (1)
+        : "memory"
+    );
+    return old;
 }
 
+/* System detection */
+static int detect_boot_mode(void) {
+    struct stat st;
 
-// Download thread function
-void *download_thread(void *arg) {
-    char *url = ((char**)arg)[0];
-    char *output = ((char**)arg)[1];
+    if (stat("/sys/firmware/efi", &st) == 0) {
+        return 1; /* UEFI */
+    }
 
-    log_message("Downloading %s to %s", url, output);
-    download_file(url, output);
+    if (stat("/proc/device-tree", &st) == 0) {
+        DIR *dir = opendir("/proc/device-tree");
+        if (dir) {
+            struct dirent *ent;
+            while ((ent = readdir(dir))) {
+                if (strstr(ent->d_name, "uefi") || strstr(ent->d_name, "efi")) {
+                    closedir(dir);
+                    return 1;
+                }
+            }
+            closedir(dir);
+        }
+    }
 
-    return NULL;
+    return 0; /* BIOS */
 }
 
-// Download file with curl
-int download_file(const char *url, const char *output) {
-    CURL *curl;
-    FILE *fp;
-    CURLcode res;
+/* Safe disk path construction */
+static int build_disk_path(char *dest, size_t size, const char *disk) {
+    if (!dest || !disk || size < 32) return -1;
 
-    curl = curl_easy_init();
-    if (!curl) {
-        log_message("Failed to initialize curl");
-        return ERR_NETWORK;
-    }
+    const char *prefix = "/dev/";
+    size_t prefix_len = strlen(prefix);
+    size_t disk_len = strlen(disk);
 
-    fp = fopen(output, "wb");
-    if (!fp) {
-        log_message("Failed to create file: %s", output);
-        curl_easy_cleanup(curl);
-        return ERR_IO_FAILURE;
-    }
+    if (prefix_len + disk_len + 1 > size) return -1;
 
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Lainux-Installer/1.0");
-    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    memcpy(dest, prefix, prefix_len);
+    memcpy(dest + prefix_len, disk, disk_len);
+    dest[prefix_len + disk_len] = '\0';
 
-    res = curl_easy_perform(curl);
-
-    fclose(fp);
-    curl_easy_cleanup(curl);
-
-    if (res != CURLE_OK) {
-        log_message("Download failed: %s", curl_easy_strerror(res));
-        remove(output);
-        return ERR_NETWORK;
-    }
-
-    log_message("Download completed: %s", output);
-    return ERR_SUCCESS;
+    return 0;
 }
 
-
-// Get hardware details
-void get_hardware_details(char *cpu_info, char *memory_info, char *gpu_info, char *storage_info) {
-    // CPU info with fallbacks
-    FILE *fp = popen("lscpu 2>/dev/null | grep 'Model name' | head -1 | cut -d: -f2- | sed 's/^[ \\t]*//'", "r");
-    if (fp && fgets(cpu_info, 128, fp)) {
-        cpu_info[strcspn(cpu_info, "\n")] = 0;
-        pclose(fp);
+/* Smart partition name detection */
+static void get_partition_names(const char *dev_path, char *efi_part, char *root_part, size_t size) {
+    if (strncmp(dev_path, "/dev/nvme", 9) == 0 ||
+        strncmp(dev_path, "/dev/mmcblk", 11) == 0) {
+        snprintf(efi_part, size, "%sp1", dev_path);
+        snprintf(root_part, size, "%sp2", dev_path);
+    } else if (strncmp(dev_path, "/dev/vd", 7) == 0) {
+        snprintf(efi_part, size, "%s1", dev_path);
+        snprintf(root_part, size, "%s2", dev_path);
     } else {
-        fp = popen("cat /proc/cpuinfo | grep 'model name' | head -1 | cut -d: -f2- | sed 's/^[ \\t]*//'", "r");
-        if (fp && fgets(cpu_info, 128, fp)) {
-            cpu_info[strcspn(cpu_info, "\n")] = 0;
-            pclose(fp);
+        snprintf(efi_part, size, "%s1", dev_path);
+        snprintf(root_part, size, "%s2", dev_path);
+    }
+}
+
+/* Safe file existence check with timeout */
+static int safe_file_exists(const char *path, int max_wait) {
+    struct stat st;
+    int attempts = 0;
+
+    while (attempts < max_wait) {
+        if (stat(path, &st) == 0) {
+            return 1;
+        }
+        usleep(500000); /* 500ms */
+        attempts++;
+    }
+    return 0;
+}
+
+/* Secure partition creation */
+static int create_secure_partitions(const char *disk, int boot_mode) {
+    char dev_path[32];
+    char cmd[256];
+
+    if (build_disk_path(dev_path, sizeof(dev_path), disk) != 0) {
+        return -1;
+    }
+
+    log_message("Creating partitions on %s", dev_path);
+
+    /* Clear partition table */
+    snprintf(cmd, sizeof(cmd), "sgdisk -Z %s", dev_path);
+    if (run_command(cmd, 1) != 0) {
+        snprintf(cmd, sizeof(cmd), "dd if=/dev/zero of=%s bs=512 count=1", dev_path);
+        run_command(cmd, 1);
+    }
+
+    /* Wait for device reset */
+    sleep(1);
+    run_command("udevadm settle 2>/dev/null", 0);
+
+    if (boot_mode) {
+        /* UEFI: GPT with ESP */
+        snprintf(cmd, sizeof(cmd),
+            "sgdisk -n 1::+%dM -t 1:ef00 -c 1:lainux-efi %s",
+            MIN_EFI_SIZE_MB, dev_path);
+        if (run_command(cmd, 1) != 0) return -1;
+
+        snprintf(cmd, sizeof(cmd),
+            "sgdisk -n 2:: -t 2:8300 -c 2:lainux-root %s",
+            dev_path);
+        if (run_command(cmd, 1) != 0) return -1;
+    } else {
+        /* BIOS: MBR with boot flag */
+        snprintf(cmd, sizeof(cmd),
+            "fdisk %s << EOF\no\nn\np\n1\n\n+%dM\na\n1\nn\np\n2\n\n\nw\nEOF",
+            dev_path, MIN_EFI_SIZE_MB);
+        if (run_command(cmd, 1) != 0) return -1;
+    }
+
+    /* Force kernel to re-read partition table */
+    snprintf(cmd, sizeof(cmd), "partprobe %s 2>/dev/null", dev_path);
+    run_command(cmd, 0);
+
+    run_command("udevadm settle 2>/dev/null", 0);
+    sleep(DEVICE_WAIT_TIME);
+
+    return 0;
+}
+
+/* Safe formatting with fallback */
+static int format_partitions_safe(const char *efi_part, const char *root_part) {
+    char cmd[512];
+    int retry;
+
+    /* Format EFI partition */
+    log_message("Formatting %s as FAT32", efi_part);
+    for (retry = 0; retry < MAX_RETRIES; retry++) {
+        snprintf(cmd, sizeof(cmd), "mkfs.fat -F32 -n LAINUX_EFI %s", efi_part);
+        if (run_command(cmd, 0) == 0) break;
+
+        snprintf(cmd, sizeof(cmd), "mkfs.vfat -F32 %s", efi_part);
+        if (run_command(cmd, 0) == 0) break;
+
+        if (retry < MAX_RETRIES - 1) {
+            log_message("Retrying EFI format...");
+            sleep(1);
+        }
+    }
+
+    if (retry == MAX_RETRIES) {
+        log_message("Failed to format EFI partition");
+        return -1;
+    }
+
+    /* Format root partition */
+    log_message("Formatting %s as ext4", root_part);
+    for (retry = 0; retry < MAX_RETRIES; retry++) {
+        snprintf(cmd, sizeof(cmd), "mkfs.ext4 -F -L lainux_root %s", root_part);
+        if (run_command(cmd, 0) == 0) break;
+
+        snprintf(cmd, sizeof(cmd), "mkfs.ext4 %s", root_part);
+        if (run_command(cmd, 0) == 0) break;
+
+        if (retry < MAX_RETRIES - 1) {
+            log_message("Retrying root format...");
+            sleep(1);
+        }
+    }
+
+    if (retry == MAX_RETRIES) {
+        log_message("Failed to format root partition");
+        return -1;
+    }
+
+    return 0;
+}
+
+/* Safe mount with verification */
+static int safe_mount(const char *source, const char *target, const char *fstype) {
+    struct stat st;
+    int attempts = 0;
+
+    if (stat(source, &st) != 0) {
+        log_message("Source %s does not exist", source);
+        return -1;
+    }
+
+    if (stat(target, &st) != 0) {
+        if (mkdir(target, 0755) != 0) {
+            log_message("Failed to create mount point %s", target);
+            return -1;
+        }
+    }
+
+    while (attempts < MAX_RETRIES) {
+        if (mount(source, target, fstype, 0, NULL) == 0) {
+            /* Verify mount succeeded */
+            if (stat(target, &st) == 0) {
+                return 0;
+            }
+        }
+
+        if (attempts < MAX_RETRIES - 1) {
+            usleep(500000);
+            attempts++;
+        }
+    }
+
+    log_message("Failed to mount %s to %s", source, target);
+    return -1;
+}
+
+/* Universal bootloader installation */
+static int install_universal_bootloader(const char *disk, int boot_mode, const char *root_mount) {
+    char dev_path[32];
+    char cmd[512];
+
+    if (build_disk_path(dev_path, sizeof(dev_path), disk) != 0) {
+        return -1;
+    }
+
+    log_message("Installing bootloader for %s mode", boot_mode ? "UEFI" : "BIOS");
+
+    if (boot_mode) {
+        /* UEFI bootloader */
+        if (file_exists("/usr/bin/grub-install")) {
+            snprintf(cmd, sizeof(cmd),
+                "grub-install --target=x86_64-efi --efi-directory=%s/boot --bootloader-id=%s --recheck %s",
+                root_mount, BOOTLOADER_ID, dev_path);
+        } else if (file_exists("/usr/bin/systemd-bootctl")) {
+            snprintf(cmd, sizeof(cmd),
+                "bootctl install --esp-path=%s/boot --boot-path=%s/boot",
+                root_mount, root_mount);
         } else {
-            strcpy(cpu_info, "Unknown CPU");
+            log_message("No UEFI bootloader found");
+            return -1;
         }
-    }
-
-    // Memory info
-    fp = popen("free -h | grep Mem | awk '{print $2}'", "r");
-    if (fp && fgets(memory_info, 32, fp)) {
-        memory_info[strcspn(memory_info, "\n")] = 0;
-        pclose(fp);
     } else {
-        strcpy(memory_info, "Unknown");
+        /* BIOS bootloader */
+        snprintf(cmd, sizeof(cmd),
+            "grub-install --target=i386-pc --recheck --boot-directory=%s/boot %s",
+            root_mount, dev_path);
     }
 
-    // GPU info with multiple fallbacks
-    fp = popen("lspci 2>/dev/null | grep -i 'vga\\|3d\\|display' | head -1 | cut -d: -f3- | sed 's/^[ \\t]*//'", "r");
-    if (fp && fgets(gpu_info, 128, fp)) {
-        gpu_info[strcspn(gpu_info, "\n")] = 0;
-        pclose(fp);
-    } else {
-        strcpy(gpu_info, "Unknown GPU");
+    if (run_command(cmd, 1) != 0) {
+        log_message("Bootloader installation failed");
+        return -1;
     }
 
-    // Storage info
-    int disk_count = 0;
-    fp = popen("lsblk -dno NAME 2>/dev/null | grep -E '^sd|^nvme|^vd' | wc -l", "r");
-    if (fp && fgets(storage_info, 32, fp)) {
-        storage_info[strcspn(storage_info, "\n")] = 0;
-        disk_count = atoi(storage_info);
-        pclose(fp);
+    /* Generate bootloader config */
+    if (file_exists("/usr/bin/grub-mkconfig")) {
+        snprintf(cmd, sizeof(cmd),
+            "grub-mkconfig -o %s/boot/grub/grub.cfg",
+            root_mount);
+        run_command(cmd, 1);
     }
 
-    if (disk_count > 0) {
-        fp = popen("lsblk -dno SIZE 2>/dev/null | grep -E '^[0-9]' | head -1", "r");
-        char size[32] = "Unknown";
-        if (fp && fgets(size, sizeof(size), fp)) {
-            size[strcspn(size, "\n")] = 0;
-            pclose(fp);
-        }
-        snprintf(storage_info, 64, "%d disks, %s total", disk_count, size);
-    } else {
-        strcpy(storage_info, "No disks detected");
-    }
+    return 0;
 }
 
-// Download Arch Linux ISO with progress
-void download_arch_iso() {
-    log_message("Downloading Lainux ISO...");
+/* Secure system configuration */
+static int configure_system_secure(const char *root_mount) {
+    char cmd[512];
+    FILE *fp;
 
-    // Check existing file
-    if (file_exists("lainux.iso")) {
-        log_message("Existing ISO found, checking integrity...");
-        long size = 0;
-        struct stat st;
-        if (stat("lainux.iso", &st) == 0) {
-            size = st.st_size;
-        }
+    /* Basic system configuration */
+    snprintf(cmd, sizeof(cmd), "arch-chroot %s ln -sf /usr/share/zoneinfo/UTC /etc/localtime", root_mount);
+    run_command(cmd, 0);
 
-        if (size > 500 * 1024 * 1024) {  // Rough check for complete ISO
-            log_message("Using existing ISO file (%ld MB)", size / (1024 * 1024));
+    snprintf(cmd, sizeof(cmd), "arch-chroot %s hwclock --systohc", root_mount);
+    run_command(cmd, 0);
+
+    /* Locale */
+    fp = fopen("/mnt/etc/locale.gen", "w");
+    if (fp) {
+        fprintf(fp, "en_US.UTF-8 UTF-8\n");
+        fprintf(fp, "en_US ISO-8859-1\n");
+        fclose(fp);
+    }
+
+    snprintf(cmd, sizeof(cmd), "arch-chroot %s locale-gen", root_mount);
+    run_command(cmd, 0);
+
+    fp = fopen("/mnt/etc/locale.conf", "w");
+    if (fp) {
+        fprintf(fp, "LANG=en_US.UTF-8\n");
+        fclose(fp);
+    }
+
+    /* Hostname */
+    fp = fopen("/mnt/etc/hostname", "w");
+    if (fp) {
+        fprintf(fp, "lainux\n");
+        fclose(fp);
+    }
+
+    /* Hosts */
+    fp = fopen("/mnt/etc/hosts", "a");
+    if (fp) {
+        fprintf(fp, "127.0.1.1 lainux.localdomain lainux\n");
+        fclose(fp);
+    }
+
+    /* Users */
+    snprintf(cmd, sizeof(cmd), "echo 'root:lainux' | arch-chroot %s chpasswd", root_mount);
+    run_command(cmd, 0);
+
+    snprintf(cmd, sizeof(cmd), "arch-chroot %s useradd -m -G wheel -s /bin/bash lainux", root_mount);
+    run_command(cmd, 0);
+
+    snprintf(cmd, sizeof(cmd), "echo 'lainux:lainux' | arch-chroot %s chpasswd", root_mount);
+    run_command(cmd, 0);
+
+    /* Sudo */
+    fp = fopen("/mnt/etc/sudoers.d/wheel", "w");
+    if (fp) {
+        fprintf(fp, "%%wheel ALL=(ALL) ALL\n");
+        fclose(fp);
+        snprintf(cmd, sizeof(cmd), "chmod 440 %s/etc/sudoers.d/wheel", root_mount);
+        run_command(cmd, 0);
+    }
+
+    return 0;
+}
+
+/* Main installation procedure */
+void perform_installation(const char *disk) {
+    if (atomic_test_and_set(&install_running)) {
+        log_message("Installation already running");
+        return;
+    }
+
+    char dev_path[32];
+    char efi_part[32], root_part[32];
+    int boot_mode;
+
+    /* Detect boot mode */
+    boot_mode = detect_boot_mode();
+    log_message("Detected %s boot mode", boot_mode ? "UEFI" : "BIOS");
+
+    /* Build device path */
+    if (build_disk_path(dev_path, sizeof(dev_path), disk) != 0) {
+        log_message("Invalid disk name");
+        install_running = 0;
+        return;
+    }
+
+    /* Get partition names */
+    get_partition_names(dev_path, efi_part, root_part, sizeof(efi_part));
+
+    /* Pre-installation checks */
+    if (!check_dependencies()) {
+        log_message("Dependency check failed");
+        install_running = 0;
+        return;
+    }
+
+    if (!check_network()) {
+        log_message("Network check failed");
+        if (!confirm_action("Continue without network?", "CONTINUE")) {
+            install_running = 0;
             return;
         }
     }
 
-    // Download with wget and curl fallback
+    /* Disk space check */
+    long available = get_available_space("/");
+    long required = MIN_ROOT_SIZE_GB * 1024;
+
+    if (available < required) {
+        log_message("Insufficient space: %ldMB < %ldMB", available, required);
+        install_running = 0;
+        return;
+    }
+
+    /* Partitioning */
+    log_message("Creating partitions...");
+    if (create_secure_partitions(disk, boot_mode) != 0) {
+        log_message("Partitioning failed");
+        install_running = 0;
+        return;
+    }
+
+    /* Wait for partitions */
+    if (!safe_file_exists(efi_part, 10) || !safe_file_exists(root_part, 10)) {
+        log_message("Partitions not detected");
+        install_running = 0;
+        return;
+    }
+
+    /* Formatting */
+    log_message("Formatting partitions...");
+    if (format_partitions_safe(efi_part, root_part) != 0) {
+        install_running = 0;
+        return;
+    }
+
+    /* Mounting */
+    log_message("Mounting filesystems...");
+
+    /* Clean previous mounts */
+    run_command("umount -R /mnt 2>/dev/null || true", 0);
+    run_command("rmdir /mnt 2>/dev/null || true", 0);
+    run_command("mkdir -p /mnt", 0);
+
+    /* Mount root */
+    if (safe_mount(root_part, "/mnt", "ext4") != 0) {
+        log_message("Failed to mount root");
+        install_running = 0;
+        return;
+    }
+
+    /* Create and mount boot */
+    run_command("mkdir -p /mnt/boot", 0);
+    if (safe_mount(efi_part, "/mnt/boot", "vfat") != 0) {
+        log_message("Failed to mount boot");
+        install_running = 0;
+        return;
+    }
+
+    /* Base system installation */
+    log_message("Installing base system...");
+    run_command("mkdir -p /mnt/var/cache/pacman/pkg", 0);
+
     char cmd[512];
-
-    // Try wget first (supports continue)
-    snprintf(cmd, sizeof(cmd), "wget -c --timeout=30 --tries=3 '%s' -O lainux.iso 2>&1 | grep --line-buffered -E '([0-9]+)%%|speed'", ARCH_ISO_URL);
-    int result = run_command(cmd, 1);
-
-    if (result != 0) {
-        log_message("wget failed, trying curl...");
-        snprintf(cmd, sizeof(cmd), "curl -L -C - --connect-timeout 30 --retry 3 '%s' -o lainux.iso 2>&1 | grep --line-buffered -E '([0-9]+[.][0-9]*%%)|speed'", ARCH_ISO_URL);
-        run_command(cmd, 1);
+    snprintf(cmd, sizeof(cmd), "pacstrap -K /mnt base linux linux-firmware");
+    if (run_command(cmd, 1) != 0) {
+        log_message("Base installation failed");
+        install_running = 0;
+        return;
     }
 
-    if (file_exists("lainux.iso")) {
-        struct stat st;
-        if (stat("lainux.iso", &st) == 0) {
-            log_message("Download complete: %ld MB", st.st_size / (1024 * 1024));
-        }
-    } else {
-        log_message("Failed to download LainuxOS ISO");
-    }
-}
+    /* Generate fstab */
+    log_message("Generating fstab...");
+    run_command("genfstab -U /mnt >> /mnt/etc/fstab", 1);
 
-// Find ISO files
-int find_iso_files(char files[][MAX_PATH], int max_files) {
-    DIR *dir;
-    struct dirent *entry;
-    int count = 0;
+    /* System configuration */
+    log_message("Configuring system...");
+    configure_system_secure("/mnt");
 
-    dir = opendir(".");
-    if (dir == NULL) {
-        return 0;
+    /* Install bootloader */
+    log_message("Installing bootloader...");
+    if (install_universal_bootloader(disk, boot_mode, "/mnt") != 0) {
+        log_message("Bootloader installation failed");
     }
 
-    while ((entry = readdir(dir)) != NULL && count < max_files) {
-        if (entry->d_type == DT_REG || entry->d_type == DT_LNK) {
-            char *ext = strrchr(entry->d_name, '.');
-            if (ext != NULL) {
-                char lower_ext[8];
-                strncpy(lower_ext, ext, sizeof(lower_ext)-1);
-                for (int i = 0; lower_ext[i]; i++) {
-                    lower_ext[i] = tolower((unsigned char)lower_ext[i]);
-                }
+    /* Services */
+    log_message("Enabling services...");
+    snprintf(cmd, sizeof(cmd), "arch-chroot /mnt systemctl enable systemd-networkd systemd-resolved");
+    run_command(cmd, 0);
 
-                if (strcmp(lower_ext, ".iso") == 0 ||
-                    strcmp(lower_ext, ".img") == 0 ||
-                    strstr(entry->d_name, "arch") != NULL ||
-                    strstr(entry->d_name, "ARCH") != NULL) {
-                    strncpy(files[count], entry->d_name, MAX_PATH - 1);
-                    files[count][MAX_PATH - 1] = '\0';
+    /* Cleanup */
+    log_message("Cleaning up...");
+    run_command("sync", 0);
+    run_command("umount -R /mnt", 0);
 
-                    // Get file size
-                    struct stat st;
-                    if (stat(entry->d_name, &st) == 0) {
-                        char size_str[32];
-                        if (st.st_size > 1024*1024*1024) {
-                            snprintf(size_str, sizeof(size_str), "%.1fGB", st.st_size/(1024.0*1024.0*1024.0));
-                        } else {
-                            snprintf(size_str, sizeof(size_str), "%.1fMB", st.st_size/(1024.0*1024.0));
-                        }
+    log_message("Installation complete!");
 
-                        // Append size to filename
-                        strcat(files[count], " (");
-                        strcat(files[count], size_str);
-                        strcat(files[count], ")");
-                    }
+    /* Secure cleanup */
+    secure_zero(dev_path, sizeof(dev_path));
+    secure_zero(efi_part, sizeof(efi_part));
+    secure_zero(root_part, sizeof(root_part));
 
-                    count++;
-                }
-            }
-        }
-    }
+    install_running = 0;
 
-    closedir(dir);
-
-    // Sort files alphabetically
-    for (int i = 0; i < count - 1; i++) {
-        for (int j = i + 1; j < count; j++) {
-            if (strcmp(files[i], files[j]) > 0) {
-                char temp[MAX_PATH];
-                strcpy(temp, files[i]);
-                strcpy(files[i], files[j]);
-                strcpy(files[j], temp);
-            }
-        }
-    }
-
-    return count;
-}
-
-// Select ISO file
-void select_iso_file(char *iso_path, size_t size) {
-    clear();
-
-    attron(A_BOLD | COLOR_PAIR(1));
-    mvprintw(2, 10, "INSTALLATION MEDIA SELECTION");
-    attroff(A_BOLD | COLOR_PAIR(1));
-
-    mvprintw(4, 10, "Choose ISO source:");
-    attron(COLOR_PAIR(2));
-    mvprintw(5, 15, "1. Download latest LainuxOS ISO");
-    attroff(COLOR_PAIR(2));
-    mvprintw(6, 15, "2. Use existing ISO file");
-    mvprintw(7, 15, "3. Cancel and return to menu");
-
-    mvprintw(9, 10, "Enter choice (1-3): ");
-
-    echo();
-    char choice[2];
-    mvgetnstr(9, 30, choice, sizeof(choice));
-    noecho();
-
-    switch (choice[0]) {
-        case '1': {
-            clear();
-            mvprintw(5, 10, "Downloading latest LainuxOS ISO...");
-            mvprintw(6, 10, "This may take several minutes depending on your connection.");
-            refresh();
-
-            // Create download thread
-            pthread_t download_thread_id;
-            char *args[2];
-            args[0] = (char*)ARCH_ISO_URL;
-            args[1] = "lainux.iso";
-
-            mvprintw(8, 10, "Download in progress...");
-            mvprintw(9, 10, "Please wait.");
-            refresh();
-
-            if (pthread_create(&download_thread_id, NULL, download_thread, args) == 0) {
-                // Show progress animation
-                for (int i = 0; i < 30; i++) {
-                    mvprintw(9, 24 + (i % 4), ".   " + (i % 4));
-                    refresh();
-                    usleep(100000);
-
-                    // Check if download completed (simple non-portable wait)
-                    int try_result;
-                    // Use non-blocking check
-                    struct timespec ts = {0, 10000000}; // 10ms
-                    nanosleep(&ts, NULL);
-
-                    void *result;
-                    #ifdef __linux__
-                    usleep(100000);
-                    #else
-                    // For non-Linux systems, just wait
-                    if (i == 29) {
-                        pthread_join(download_thread_id, NULL);
-                    }
-                    #endif
-                    pthread_join(download_thread_id, NULL);
-                }
-
-                pthread_join(download_thread_id, NULL);
-            }
-
-            if (file_exists("lainux.iso")) {
-                strncpy(iso_path, "lainux.iso", size);
-
-                // Verify ISO size
-                struct stat st;
-                if (stat("lainux.iso", &st) == 0) {
-                    clear();
-                    mvprintw(5, 10, "Download complete!");
-                    mvprintw(6, 10, "File: lainux.iso");
-                    mvprintw(7, 10, "Size: %.2f GB", st.st_size / (1024.0 * 1024.0 * 1024.0));
-                    refresh();
-                    sleep(2);
-                }
-            } else {
-                clear();
-                mvprintw(5, 10, "Download failed. Please try option 2.");
-                mvprintw(6, 10, "Make sure you have internet connection and disk space.");
-                refresh();
-                sleep(3);
-                iso_path[0] = '\0';
-            }
-            break;
-        }
-
-        case '2': {
-            clear();
-            char iso_files[20][MAX_PATH];
-            int file_count = find_iso_files(iso_files, 20);
-
-            if (file_count == 0) {
-                mvprintw(5, 10, "No ISO files found in current directory.");
-                mvprintw(6, 10, "Please place an ISO file here and try again.");
-                mvprintw(7, 10, "Supported formats: .iso, .img");
-                refresh();
-                sleep(3);
-                iso_path[0] = '\0';
-                break;
-            }
-
-            int selected = 0;
-            while (1) {
-                clear();
-
-                attron(A_BOLD | COLOR_PAIR(1));
-                mvprintw(2, 10, "SELECT ISO FILE");
-                attroff(A_BOLD | COLOR_PAIR(1));
-
-                mvprintw(3, 10, "Use ↑/↓ arrows, ENTER to select, ESC to cancel");
-                mvprintw(4, 10, "─────────────────────────────────────────────");
-
-                for (int i = 0; i < file_count; i++) {
-                    if (i == selected) {
-                        attron(A_REVERSE | COLOR_PAIR(2));
-                        mvprintw(6 + i, 12, "→ %-60s", iso_files[i]);
-                        attroff(A_REVERSE | COLOR_PAIR(2));
-                    } else {
-                        mvprintw(6 + i, 14, "%-60s", iso_files[i]);
-                    }
-                }
-
-                // Extract actual filename (without size)
-                char actual_filename[MAX_PATH];
-                strncpy(actual_filename, iso_files[selected], MAX_PATH-1);
-                char *paren = strchr(actual_filename, '(');
-                if (paren) *(paren-1) = '\0';  // Remove trailing space before parenthesis
-
-                mvprintw(6 + file_count + 2, 10, "Selected: %s", actual_filename);
-
-                int ch = getch();
-                if (ch == KEY_UP) {
-                    selected = (selected > 0) ? selected - 1 : file_count - 1;
-                } else if (ch == KEY_DOWN) {
-                    selected = (selected < file_count - 1) ? selected + 1 : 0;
-                } else if (ch == 10) {
-                    // Extract actual filename
-                    strncpy(actual_filename, iso_files[selected], MAX_PATH-1);
-                    paren = strchr(actual_filename, '(');
-                    if (paren) *(paren-1) = '\0';
-
-                    strncpy(iso_path, actual_filename, size);
-
-                    // Verify file exists
-                    if (!file_exists(iso_path)) {
-                        clear();
-                        mvprintw(5, 10, "Error: File not found: %s", iso_path);
-                        refresh();
-                        sleep(2);
-                        iso_path[0] = '\0';
-                    }
-                    break;
-                } else if (ch == 27) {
-                    iso_path[0] = '\0';
-                    break;
-                }
-            }
-            break;
-        }
-
-        default:
-            iso_path[0] = '\0';
-            break;
-    }
-}
-
-
-// Select configuration
-void select_configuration() {
-    clear();
-
-    attron(A_BOLD | COLOR_PAIR(1));
-    mvprintw(2, 10, "SYSTEM CONFIGURATION");
-    attroff(A_BOLD | COLOR_PAIR(1));
-
-    mvprintw(4, 10, "Select system configuration:");
-
-    const char *configs[] = {
-        "Minimal        (Base system only, ~500MB)",
-        "Standard       (Base + Desktop, ~2GB)",
-        "Development    (Standard + Dev tools, ~4GB)",
-        "Server         (Minimal + Server packages, ~1.5GB)",
-        "Security       (Standard + Security tools, ~2.5GB)",
-        "CyberSecurity  (Advanced security suite, ~3.5GB)",
-        "Custom         (Manual package selection)",
-        NULL
-    };
-
-    int selected = 0;
-    int config_count = 7;
-
-    while (1) {
-        clear();
-
-        attron(A_BOLD | COLOR_PAIR(1));
-        mvprintw(2, 10, "SELECT CONFIGURATION");
-        attroff(A_BOLD | COLOR_PAIR(1));
-
-        mvprintw(3, 10, "Use ↑/↓ arrows, ENTER to select, ESC to cancel");
-        mvprintw(4, 10, "──────────────────────────────────────────────");
-
-        for (int i = 0; i < config_count; i++) {
-            if (i == selected) {
-                attron(A_REVERSE | COLOR_PAIR(2));
-                mvprintw(6 + i, 12, "→ %s", configs[i]);
-                attroff(A_REVERSE | COLOR_PAIR(2));
-            } else {
-                mvprintw(6 + i, 14, "%s", configs[i]);
-            }
-        }
-
-        mvprintw(6 + config_count + 2, 10, "Selected: %s", configs[selected]);
-
-        int ch = getch();
-        if (ch == KEY_UP) {
-            selected = (selected > 0) ? selected - 1 : config_count - 1;
-        } else if (ch == KEY_DOWN) {
-            selected = (selected < config_count - 1) ? selected + 1 : 0;
-        } else if (ch == 10) {
-            // Save configuration
-            FILE *config_file = fopen("lainux-config.txt", "w");
-            if (config_file) {
-                fprintf(config_file, "# Lainux Installation Configuration\n");
-                fprintf(config_file, "# Generated: %s", ctime(&(time_t){time(NULL)}));
-                fprintf(config_file, "Configuration: %s\n", configs[selected]);
-
-                switch (selected) {
-                    case 0:
-                        fprintf(config_file, "Type=minimal\n");
-                        fprintf(config_file, "Packages=base linux linux-firmware\n");
-                        break;
-                    case 1:
-                        fprintf(config_file, "Type=standard\n");
-                        fprintf(config_file, "Packages=base linux linux-firmware xorg desktop-environment network-manager\n");
-                        break;
-                    case 2:
-                        fprintf(config_file, "Type=development\n");
-                        fprintf(config_file, "Packages=base linux linux-firmware xorg desktop-environment network-manager base-devel git python nodejs docker\n");
-                        break;
-                    case 3:
-                        fprintf(config_file, "Type=server\n");
-                        fprintf(config_file, "Packages=base linux linux-firmware openssh nginx postgresql redis\n");
-                        break;
-                    case 4:
-                        fprintf(config_file, "Type=security\n");
-                        fprintf(config_file, "Packages=base linux-hardened linux-firmware xorg desktop-environment ufw openssl auditd\n");
-                        break;
-                    case 5:
-                        fprintf(config_file, "Type=cybersecurity\n");
-                        fprintf(config_file, "Packages=base linux-hardened linux-firmware xorg desktop-environment wireshark nmap metasploit volatility autopsy\n");
-                        break;
-                    case 6:
-                        fprintf(config_file, "Type=custom\n");
-                        fprintf(config_file, "Packages=manual_selection\n");
-                        break;
-                }
-
-                fclose(config_file);
-
-                clear();
-                mvprintw(5, 10, "Configuration saved to lainux-config.txt");
-                mvprintw(7, 10, "This configuration will be used during installation.");
-                refresh();
-                sleep(2);
-            }
-            break;
-        } else if (ch == 27) {
-            break;
-        }
-    }
+    /* Show summary */
+    show_summary(disk);
 }

@@ -137,7 +137,7 @@ void show_summary(const char *disk) {
 
     attron(A_BOLD | COLOR_PAIR(1));
 
-    mvprintw(3, center_x, "│         %s   │", _("INSTALL_COMPLETE"));
+    mvprintw(3, center_x, "│         %s   │", get_text("INSTALL_COMPLETE"));
     attroff(A_BOLD | COLOR_PAIR(1));
 
     mvprintw(6, center_x + 5, "Lainux has been successfully installed!");
