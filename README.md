@@ -1,5 +1,5 @@
 # Lainux
-![Lainux Logo](https://raw.githubusercontent.com/wienton/lainux/main/assets/logo.png) 
+![Lainux Logo](https://raw.githubusercontent.com/wienton/lainux/main/assets/lain_background.jpg)
 
 **Lainux** is a highly specialized, command-line-centric Linux distribution meticulously engineered from the robust foundation of Arch Linux. Developed by **wienton**, this project is dedicated to pushing the boundaries of system performance, absolute control, and uncompromising security for expert users, system developers, and low-level programming enthusiasts.
 
