@@ -14,8 +14,6 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
-
-
 // header
 #include "include/installer.h"
 #include "locale/lang.h"
