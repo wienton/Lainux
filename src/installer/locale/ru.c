@@ -7,7 +7,7 @@ const char* ru_strings[][2] = {
     {"HARDWARE_INFO", "Информация об Оборудовании"},
     {"SYSTEM_REQUIREMENTS", "Проверка Системных Требований"},
     {"CONF_SELECTION", "Выбор Конфигурации"},
-    {"DISICK_INFO", "Информация о Дисках"},  // опечатка? пусть будет DISK_INFO
+    {"DISK_INFO", "Информация о Дисках"},
     {"DISK_INFO", "Информация о Дисках"},
     {"NETWORK_CHECK", "Проверка Сети"},
     {"NETWORK_DIAG", "Сетевая Диагностика"},
