@@ -31,6 +31,10 @@
 #include <curl/curl.h>
 #include <ctype.h>
 
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
+
 #include "../utils/network_connection/network_sniffer.h"
 #include "../utils/network_connection/network_state.h"
 #include "vm/vm.h"
@@ -810,6 +814,153 @@ void show_summary(const char *disk) {
         }
     }
 }
+// Функция для отображения меню выбора конфигурации через ncurses
+void show_configuration_menu(void) {
+    // Инициализация Lua
+    lua_State *L = luaL_newstate();
+    luaL_openlibs(L);
+
+    // Загрузка конфигурационного файла
+    if (luaL_dofile(L, "src/installer/configs/config.lua") != LUA_OK) {
+        log_message("Lua error: %s", lua_tostring(L, -1));
+        lua_close(L);
+        return;
+    }
+
+    // Получение списка конфигураций
+    lua_getglobal(L, "get_configurations_list");
+    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
+        log_message("Lua error: %s", lua_tostring(L, -1));
+        lua_close(L);
+        return;
+    }
+
+    if (!lua_istable(L, -1)) {
+        log_message("No configurations found");
+        lua_close(L);
+        return;
+    }
+
+    int config_count = luaL_len(L, -1);
+    if (config_count == 0) {
+        log_message("Configuration list is empty");
+        lua_close(L);
+        return;
+    }
+
+    // Отображение меню через ncurses
+    int selected = 0;
+    int max_y, max_x;
+    getmaxyx(stdscr, max_y, max_x);
+
+    while (1) {
+        clear();
+
+        // Заголовок
+        attron(A_BOLD | COLOR_PAIR(1));
+        mvprintw(2, (max_x - 25) / 2, "SELECT CONFIGURATION");
+        attroff(A_BOLD | COLOR_PAIR(1));
+
+        mvprintw(4, 10, "Use UP/DOWN arrows to navigate, ENTER to select");
+
+        // Отображение конфигураций
+        for (int i = 0; i < config_count; i++) {
+            lua_rawgeti(L, -1, i + 1); // Lua индексы с 1
+
+            // Получение данных конфигурации
+            lua_getfield(L, -1, "name");
+            const char *name = lua_tostring(L, -1);
+            lua_pop(L, 1);
+
+            lua_getfield(L, -1, "description");
+            const char *desc = lua_tostring(L, -1);
+            lua_pop(L, 1);
+
+            lua_getfield(L, -1, "size");
+            const char *size = lua_tostring(L, -1);
+            lua_pop(L, 1);
+
+            // Отображение
+            int y_pos = 6 + i * 3;
+
+            if (i == selected) {
+                // Выделенный элемент
+                attron(A_REVERSE | COLOR_PAIR(2));
+                mvprintw(y_pos, 12, "> %-20s %-10s", name, size);
+                attroff(A_REVERSE | COLOR_PAIR(2));
+
+                // Описание выделенного элемента
+                attron(COLOR_PAIR(3));
+                mvprintw(y_pos + 1, 15, "%s", desc);
+                attroff(COLOR_PAIR(3));
+
+                // Особенности
+                lua_getfield(L, -1, "features");
+                if (lua_istable(L, -1)) {
+                    int feature_y = y_pos + 2;
+                    mvprintw(feature_y, 15, "Features: ");
+
+                    int feature_count = luaL_len(L, -1);
+                    for (int f = 0; f < feature_count && f < 3; f++) {
+                        lua_rawgeti(L, -1, f + 1);
+                        const char *feature = lua_tostring(L, -1);
+                        if (f > 0) printw(", ");
+                        printw("%s", feature);
+                        lua_pop(L, 1);
+                    }
+                }
+                lua_pop(L, 1);
+            } else {
+                // Невыделенный элемент
+                attron(COLOR_PAIR(7));
+                mvprintw(y_pos, 14, "%-20s %-10s", name, size);
+                attroff(COLOR_PAIR(7));
+            }
+
+            lua_pop(L, 1); // Убираем конфигурацию из стека
+        }
+
+        // Инструкции
+        attron(COLOR_PAIR(4));
+        mvprintw(max_y - 3, 10, "ENTER: Select  ESC: Cancel");
+        attroff(COLOR_PAIR(4));
+
+        refresh();
+
+        // Обработка ввода
+        int ch = getch();
+        switch (ch) {
+            case KEY_UP:
+                selected = (selected > 0) ? selected - 1 : config_count - 1;
+                break;
+            case KEY_DOWN:
+                selected = (selected < config_count - 1) ? selected + 1 : 0;
+                break;
+            case 10: // Enter - выбор
+                {
+                    // Получаем ID выбранной конфигурации
+                    lua_rawgeti(L, -1, selected + 1);
+                    lua_getfield(L, -1, "id");
+                    const char *selected_id = lua_tostring(L, -1);
+
+                    // Сохраняем выбор
+                    log_message("Selected configuration: %s", selected_id);
+
+                    // Закрываем Lua
+                    lua_close(L);
+
+                    // Возвращаемся или продолжаем установку
+                    return;
+                }
+                break;
+            case 27: // ESC - отмена
+                lua_close(L);
+                return;
+        }
+    }
+
+    lua_close(L);
+}
 
 // Main application
 int main() {
@@ -1003,7 +1154,7 @@ int main() {
                         check_system_requirements();
                         break;
                     case 4: // Configuration Selection
-                        select_configuration();
+                        show_configuration_menu();
                         break;
                     case 5: // Disk Info
                         show_disk_info();
