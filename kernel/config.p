@@ -1,6 +1,5 @@
-// config file Protocol
+/* Configuration for build lainux ISO */
 
-import "network"
 
 struct SystemConfig {
     float Version

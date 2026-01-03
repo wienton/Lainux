@@ -34,15 +34,15 @@ void show_logo() {
 
     // center
     int slogan1_x = (max_x - (int)strlen("Development Laboratory")) / 2;
-    int slogan2_x = (max_x - (int)strlen("Simplicity in design, security in execution")) / 2;
-    int slogan3_x = (max_x - (int)strlen("Minimalism with purpose, freedom with responsibility")) / 2;
+    int slogan2_x = (max_x - (int)strlen("Present Day ... Present Time ...")) / 2;
+    int slogan3_x = (max_x - (int)strlen("Information: @lainuxorg")) / 2;
 
     attron(COLOR_PAIR(2) | A_BOLD);
     mvprintw(12, slogan1_x, "Development Laboratory");
     attroff(COLOR_PAIR(2) | A_BOLD);
 
     attron(COLOR_PAIR(7));
-    mvprintw(13, slogan2_x, "Simplicity in design, security in execution");
-    mvprintw(14, slogan3_x, "Minimalism with purpose, freedom with responsibility");
+    mvprintw(13, slogan2_x, "Present Day ... Present Time ...");
+    mvprintw(14, slogan3_x, "Information: @lainuxorg");
     attroff(COLOR_PAIR(7));
 }

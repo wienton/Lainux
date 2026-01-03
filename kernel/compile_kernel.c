@@ -44,7 +44,7 @@ void parse_protocol_file(const char* filename) {
     printf("[Protocol] Parsing %s...\n", filename);
 
     while (fgets(line, sizeof(line), file)) {
-        if (strstr(line, "var systemName")) {
+        if (strstr(line, "systemName")) {
             char* start = strchr(line, '"');
             printf("Var system success find\n");
             if (start) {
@@ -56,7 +56,7 @@ void parse_protocol_file(const char* filename) {
             }
         }
 
-        if (strstr(line, "var Version")) {
+        if (strstr(line, "Version")) {
             char* val = strchr(line, '=');
             if (val) {
                 version = atof(val + 1);
