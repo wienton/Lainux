@@ -11,6 +11,8 @@
 
 #include "../include/printf.h"
 
+#define NAME_CONFIG "config.p"
+
 typedef struct {
     char name[128];
     char version[32];
@@ -20,6 +22,62 @@ typedef struct {
 
 KernelConfig g_config = {0};
 bool load_config(const char *filename);
+
+
+
+// Имитация запуска движка Accela
+void run_accela_engine(char* config_name) {
+    printf("[Accela] Initializing engine for: %s...\n", config_name);
+    printf("[Accela] Status: Active. Filtering rules applied.\n");
+}
+
+void parse_protocol_file(const char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        perror("Error opening file");
+        return;
+    }
+
+    char line[256];
+    char system_name[64] = "Unknown";
+    float version = 0.0;
+
+    printf("[Protocol] Parsing %s...\n", filename);
+
+    while (fgets(line, sizeof(line), file)) {
+        // 1. Ищем системное имя
+        if (strstr(line, "var systemName")) {
+            char* start = strchr(line, '"');
+            printf("Var system success find\n");
+            if (start) {
+                char* end = strrchr(line, '"');
+                if (end > start) {
+                    strncpy(system_name, start + 1, end - start - 1);
+                    system_name[end - start - 1] = '\0';
+                }
+            }
+        }
+
+        // 2. Ищем версию
+        if (strstr(line, "var Version")) {
+            char* val = strchr(line, '=');
+            if (val) {
+                version = atof(val + 1);
+            }
+        }
+
+        // 3. Главное: запуск Accela, если нашли привязку
+        if (strstr(line, "engine = @Accela")) {
+            printf("[Protocol] Link found: %s v%.1f -> Accela\n", system_name, version);
+            run_accela_engine(system_name);
+        }
+    }
+
+    fclose(file);
+}
+
+
+
 
 int execute_command(const char *cmd, char *output, size_t output_size) {
     FILE *pipe = popen(cmd, "r");
@@ -38,7 +96,7 @@ int execute_command(const char *cmd, char *output, size_t output_size) {
         }
     }
 
-    return pclose(pipe);
+    return pclose(pipe); 
 }
 
 bool check_directory_structure() {
@@ -346,6 +404,9 @@ bool run_test_build() {
 }
 
 int main() {
+  
+    parse_protocol_file("config.p");
+/*
     const char* config_txt = "config.txt";
 
     load_config(config_txt);
@@ -433,6 +494,7 @@ int main() {
 
         return EXIT_FAILURE;
     }
+  */
 }
 
 bool load_config(const char *filename) {

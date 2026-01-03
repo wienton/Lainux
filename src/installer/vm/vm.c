@@ -1,14 +1,73 @@
+/**
+ * @file vm.c
+ * @author Wienton (@wienton) | Lainux Development Lab
+ * @brief this is file for starting and installation Virtual Machine and also build qconw for QEMU VM with LainuxOS
+ * you get instruction and qconw(config for VM) with minimal settings and shell script for starting :0
+  * @version 0.1
+ * @date 2026-01-03
+ *
+ * @copyright Copyright (c) 2026
+ *
+ */
+
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ncurses.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "../include/installer.h"
 
 extern WINDOW *log_win;
 extern WINDOW *status_win;
 
+// links for download iso
+#define ISO_LINKS "https://github.com/wienton/Lainux/releases/download/lainuxiso/lainuxiso-2025.12.25-x86_64.iso"
 
+void print_iso_size(const char *path)
+{
+    struct stat st;
+
+    if(stat(path, &st) == 0) {
+
+        double size_iso = (double)st.st_size / (1024.0 * 1024.0 * 1024.0);
+        log_message("size: %lld bytes (%.3f GB)\n", (long long)st.st_size, size_iso);
+
+    } else {
+
+        perror("stat");
+
+    }
+}
+
+
+int download_iso(const char* iso_links) {
+    if (iso_links == NULL || strlen(iso_links) == 0) {
+
+        fprintf(stderr, "Error: ISO link is empty\n");
+        return -1;
+
+    }
+
+    printf("Download ISO file from: '%s'\n", iso_links);
+
+    char command[512];
+    snprintf(command, sizeof(command), "wget --show-progress -O lainux.iso %s", iso_links);
+    int result = system(command);
+
+    if (result == 0) {
+
+        log_message("\n[Success] ISO downloaded successfully.\n");
+
+    } else {
+
+        log_message("\n[Error] Failed to download ISO. Code: %d\n", result);
+
+    }
+
+    return result;
+}
 
 // Check QEMU dependencies
 int check_qemu_dependencies() {
@@ -16,6 +75,25 @@ int check_qemu_dependencies() {
         "qemu-system-x86_64", "qemu-img",
         NULL
     };
+
+    // github.com/releases/ iso Lainux, check macro
+    const char* links_iso = ISO_LINKS;
+    unsigned result_installation = download_iso(links_iso);
+
+    if(result_installation) {
+
+
+        fprintf(stderr, "result installation(%d) error, code: %d\n", result_installation,  errno);
+        print_iso_size("lainux.iso");
+        return -1;
+
+    }
+
+
+
+    log_message("iso from '%s' download successfully\n", links_iso);
+    print_iso_size("lainux.iso");
+
 
     int missing = 0;
     for (int i = 0; qemu_tools[i] != NULL; i++) {
@@ -62,6 +140,7 @@ void create_virtual_disk() {
     long free_space = get_available_space(".");
     if (free_space < 25000) {  // Need ~25GB for VM
         log_message("Insufficient disk space: %ld MB available, need 25000 MB", free_space);
+        printf("Insufficient disk space: %ld MB available, need 25000 MB", free_space);
         return;
     }
 
@@ -141,6 +220,8 @@ void install_on_virtual_machine() {
         }
     }
 
+
+    // TODO: correct download ISO file from link
     // Select ISO file
     delwin(log_win);
     log_win = NULL;
