@@ -25,7 +25,6 @@ bool load_config(const char *filename);
 
 
 
-// Имитация запуска движка Accela
 void run_accela_engine(char* config_name) {
     printf("[Accela] Initializing engine for: %s...\n", config_name);
     printf("[Accela] Status: Active. Filtering rules applied.\n");
@@ -45,7 +44,6 @@ void parse_protocol_file(const char* filename) {
     printf("[Protocol] Parsing %s...\n", filename);
 
     while (fgets(line, sizeof(line), file)) {
-        // 1. Ищем системное имя
         if (strstr(line, "var systemName")) {
             char* start = strchr(line, '"');
             printf("Var system success find\n");
@@ -58,7 +56,6 @@ void parse_protocol_file(const char* filename) {
             }
         }
 
-        // 2. Ищем версию
         if (strstr(line, "var Version")) {
             char* val = strchr(line, '=');
             if (val) {
@@ -66,7 +63,6 @@ void parse_protocol_file(const char* filename) {
             }
         }
 
-        // 3. Главное: запуск Accela, если нашли привязку
         if (strstr(line, "engine = @Accela")) {
             printf("[Protocol] Link found: %s v%.1f -> Accela\n", system_name, version);
             run_accela_engine(system_name);
@@ -96,7 +92,7 @@ int execute_command(const char *cmd, char *output, size_t output_size) {
         }
     }
 
-    return pclose(pipe); 
+    return pclose(pipe);
 }
 
 bool check_directory_structure() {
@@ -404,7 +400,7 @@ bool run_test_build() {
 }
 
 int main() {
-  
+
     parse_protocol_file("config.p");
 /*
     const char* config_txt = "config.txt";
