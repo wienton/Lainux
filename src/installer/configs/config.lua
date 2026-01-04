@@ -1,3 +1,5 @@
+/* The main file, from which we extract the configurations, server, minimal, security, cybersecurity, etc. */
+
 local CONFIGURATIONS = {
     minimal = {
         name = "Minimal",

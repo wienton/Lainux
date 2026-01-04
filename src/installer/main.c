@@ -1,12 +1,25 @@
-/**
- * @file main.c
- * @author Wienton(@wienton) | Lainux Development Lab
- * @brief main or general file for start programm(Lainux Installer)
- * @version v0.1
- * @date 2026-01-02
- *
- * @copyright Copyright (c) 2026
- */
+/*
+
+
+Lainux Installer, developed by the Lainux Development Lab team. Lead developer: Wienton.
+
+Features:
+1. Installation, mounting, and writing to disk
+2. Internet connection check
+3. Installation and creation of a configuration file on a VM (QEMU).
+4. Ncurses graphical TUI interface.
+
+Almost complete localization (Russian and English languages).
+
+Project information and support:
+
+@lainuxorg - global
+@lainuxos - Russian portal.
+
+
+
+*/
+
 
 #include <stdio.h>
 #include <signal.h>

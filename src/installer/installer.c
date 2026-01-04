@@ -1,7 +1,28 @@
-/**
- * @file installer_engine.c
- * @brief Professional system-agnostic installation engine
- */
+/*
+
+
+Lainux Installer, developed by the Lainux Development Lab team. Lead developer: Wienton.
+
+Features:
+1. Installation, mounting, and writing to disk
+2. Internet connection check
+3. Installation and creation of a configuration file on a VM (QEMU).
+4. Ncurses graphical TUI interface.
+
+Almost complete localization (Russian and English languages).
+
+Project information and support:
+
+@lainuxorg - global
+@lainuxos - Russian portal.
+
+Installation Engine
+
+
+
+*/
+
+
 
 #include <dirent.h>
 #include <stdio.h>

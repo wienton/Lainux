@@ -1,3 +1,7 @@
+// We extract the configuration file from the lua config file and display it interactively on the screen via SI in ncurses :))
+// Wienton, the lead developer of the project, participated in its development.
+// TODO: finish correct display of packages included in the config list
+
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -5,6 +9,7 @@
 #include <string.h>
 #include "../utils/log_message.h"
 
+// Function for displaying configurations in ncurses
 void show_configuration_menu(void) {
     lua_State *L = luaL_newstate();
     luaL_openlibs(L);
@@ -80,9 +85,9 @@ void show_configuration_menu(void) {
                 mvprintw(y_pos + 2, 15, "Packages: ");
                 lua_getfield(L, -1, "packages");
                 if (lua_istable(L, -1)) {
+                    // for debug print message with packages from lua
                     log_message("found packages from config lua: %s\n", name);
-                    // if log message dont working then using printf
-                    printf("found packages from config lua: %s\n", name);
+
                     int pkg_line = y_pos + 2;
                     int pkg_col = 25;
                     int first = 1;
