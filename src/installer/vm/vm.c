@@ -16,7 +16,7 @@
 #include <ncurses.h>
 #include <string.h>
 #include <sys/stat.h>
-
+#include <openssl/sha.h>
 #include "../include/installer.h"
 
 extern WINDOW *log_win;
@@ -24,6 +24,103 @@ extern WINDOW *status_win;
 
 // links for download iso
 #define ISO_LINKS "https://github.com/wienton/Lainux/releases/download/lainuxiso/lainuxiso-2025.12.25-x86_64.iso"
+
+/*
+
+        ISO image validation and integrity check function.
+        We check using SHA256.
+        We also check the file size.
+        Basic function
+
+*/
+
+int validate_iso_image_with_output(const char *path, const char *expected_sha256) {
+    if (!path) {
+        printf("Invalid ISO image.\n");
+        return 0;
+    }
+
+    // Check file existence and size
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        printf("size of ISO image invalid.\n");
+        return 0;
+    }
+
+    if (!S_ISREG(st.st_mode) || st.st_size < 32768) {
+        printf("Invalid ISO image.\n");
+        return 0;
+    }
+
+    // Validate ISO 9660 Primary Volume Descriptor
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        printf("Invalid ISO image.\n");
+        return 0;
+    }
+
+    if (fseek(fp, 32769, SEEK_SET) != 0) {
+        fclose(fp);
+        printf("Invalid ISO image.\n");
+        return 0;
+    }
+
+    unsigned char pvd[7];
+    if (fread(pvd, 1, 7, fp) != 7) {
+        fclose(fp);
+        printf("Invalid ISO image.\n");
+        return 0;
+    }
+    fclose(fp);
+
+    if (!(pvd[0] == 0x01 &&
+          pvd[1] == 'C' &&
+          pvd[2] == 'D' &&
+          pvd[3] == '0' &&
+          pvd[4] == '0' &&
+          pvd[5] == '1')) {
+        printf("Invalid ISO image.\n");
+        return 0;
+    }
+
+    // If SHA-256 is provided, compute and compare
+    if (expected_sha256) {
+        unsigned char hash[SHA256_DIGEST_LENGTH];
+        char hash_str[65]; // 64 hex chars + null terminator
+
+        fp = fopen(path, "rb");
+        if (!fp) {
+            printf("Invalid ISO image.\n");
+            return 0;
+        }
+
+        SHA256_CTX sha256;
+        SHA256_Init(&sha256);
+
+        unsigned char buffer[8192];
+        size_t bytes;
+        while ((bytes = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
+            SHA256_Update(&sha256, buffer, bytes);
+        }
+        fclose(fp);
+
+        SHA256_Final(hash, &sha256);
+
+        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+            sprintf(hash_str + (i * 2), "%02x", hash[i]);
+        }
+        hash_str[64] = '\0';
+
+        if (strcmp(hash_str, expected_sha256) != 0) {
+            printf("Invalid ISO image.\n");
+            return 0;
+        }
+    }
+
+    printf("Valid ISO image.\n");
+    return 1;
+}
+
 
 void print_iso_size(const char *path)
 {
@@ -59,6 +156,7 @@ int download_iso(const char* iso_links) {
     if (result == 0) {
 
         log_message("\n[Success] ISO downloaded successfully.\n");
+        validate_iso_image_with_output(iso_links, NULL);
 
     } else {
 
