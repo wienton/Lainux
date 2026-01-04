@@ -17,7 +17,7 @@ typedef struct {
 
 int start_passive_sniff(const char* ifname, int duration_sec);
 
-network_sniffer get_package(network_sniffer);
+network_sniffer get_package();
 int network_package_encrypt();
 
 #endif

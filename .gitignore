@@ -12,6 +12,11 @@ Lainux-iso/
 
 lainux-vm.qcow2
 
+
+# dir
+test_brach
+GUI
+
 # others
 go.mod
 ROADMAP.md

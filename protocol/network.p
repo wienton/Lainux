@@ -14,24 +14,21 @@ layer_01 {
 
     print("Accela engine: Active Scan started...")
 
-    // Реактивный блок: мониторинг сетевого интерфейса
     listen net.eth0 {
 
-        // Фильтр на лету (Киллер-фича: встроенный синтаксис фильтрации)
         match (packet.port == 22 && packet.origin != target_node) {
 
-            // Если кто-то лезет на SSH не с того IP
+
             sys.alert("Unauthorized SSH Attempt: " + packet.origin)
 
-            // Мгновенная реакция через движок
+
             accela.firewall.block(packet.origin)
 
-            // Логируем в зашифрованный файл
             crypto.seal("Log: Unauthorized access from " + packet.origin, secure_key)
         }
     }
 
-    // Автоматизация: сканирование уязвимостей
+
     task security_audit {
         if (net.port_is_open(target_node, 80)) {
             let report = net.http_get(target_node + "/config")
@@ -41,10 +38,15 @@ layer_01 {
         }
     }
 
-    // Управление виртуальной средой для малвари
+
     accela.sandbox "malware_test" {
         isolation: total,
         net: none,
         snapshot: true
     }
+}
+
+
+layer_02 {
+
 }

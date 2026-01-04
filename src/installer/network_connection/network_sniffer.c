@@ -64,7 +64,7 @@ int start_passive_sniff(const char* ifname, int duration_sec) {
     return packet_count;
 }
 
-network_sniffer get_package(network_sniffer)
+network_sniffer get_package()
 {
     FILE* file_log = fopen("sniffer.log", "wb");
     network_sniffer* net_sniff = malloc(sizeof(network_sniffer));
@@ -92,6 +92,8 @@ network_sniffer get_package(network_sniffer)
 
     free(ifname);
     free(net_sniff);
+
+    return *net_sniff;
 }
 
 

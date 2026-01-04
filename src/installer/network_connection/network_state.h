@@ -49,4 +49,4 @@ bool check_by_ping(const char* hostname, int timeout_sec);
 bool check_by_dns(const char* dns_server, int timeout_sec);
 bool check_by_http(const char* url, int timeout_sec);
 
-#endif // NETWORK_STATE_H
+#endif

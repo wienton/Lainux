@@ -8,8 +8,6 @@
  */
 
 #include <linux/net.h>
-#include <stdio.h>
-#include <string.h>
 
 // header
 #include "header/logger.h"
