@@ -18,7 +18,7 @@
 #include <sys/stat.h>
 #include <openssl/sha.h>
 #include "../include/installer.h"
-
+#include <assert.h>
 extern WINDOW *log_win;
 extern WINDOW *status_win;
 
@@ -33,6 +33,29 @@ extern WINDOW *status_win;
         Basic function
 
 */
+// validate checksum by sys command sha256sum
+int validate_check_sum(const char* path) {
+    // check pointer
+    assert(path != NULL);
+
+    char command[1024];
+    snprintf(command, sizeof(command), "sha256sum \"%s\"", path);
+
+    printf("Executing: %s\n", command);
+
+    // executing
+    int status = system(command);
+
+   // 0 true success, 1 false
+    if (!status) {
+        fprintf(stderr, "Checksum verification failed or command not found.\n");
+        return 1; // callback error
+    }
+
+    printf("Checksum validation successful.\n");
+    return 0; // success
+}
+
 
 int validate_iso_image_with_output(const char *path, const char *expected_sha256) {
     if (!path) {
@@ -150,17 +173,20 @@ int download_iso(const char* iso_links) {
     printf("Download ISO file from: '%s'\n", iso_links);
 
     char command[512];
-    snprintf(command, sizeof(command), "wget --show-progress -O lainux.iso %s", iso_links);
+    char* end_input = "lainux.iso";
+    snprintf(command, sizeof(command), "wget --show-progress -O %p %s",end_input,  iso_links);
     int result = system(command);
 
     if (result == 0) {
 
         log_message("\n[Success] ISO downloaded successfully.\n");
         validate_iso_image_with_output(iso_links, NULL);
+        validate_check_sum(end_input);
 
     } else {
 
         log_message("\n[Error] Failed to download ISO. Code: %d\n", result);
+        validate_check_sum(end_input);
 
     }
 
@@ -176,10 +202,18 @@ int check_qemu_dependencies() {
 
     // github.com/releases/ iso Lainux, check macro
     const char* links_iso = ISO_LINKS;
+    const char* end_output = "lainux.iso";
     unsigned result_installation = download_iso(links_iso);
 
-    if(result_installation) {
+    int result_checksum = validate_check_sum(end_output);
 
+    if(!result_checksum) {
+        fprintf(stderr, "error check sum 256 '%s'\n", end_output);
+        print_iso_size(end_output);
+        return -1;
+    }
+
+    if(result_installation) {
 
         fprintf(stderr, "result installation(%d) error, code: %d\n", result_installation,  errno);
         print_iso_size("lainux.iso");

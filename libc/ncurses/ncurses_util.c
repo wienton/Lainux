@@ -1,9 +1,10 @@
 /*
  * ncurses_util.c - Implementation of ncurses utility library
- * License: MIT
+ * License: only for LAINUX
  */
 
 #include "ncurses_util.h"
+#include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -46,6 +47,15 @@ bool nc_init(void) {
         return true;
     }
     return false;
+}
+
+void print_background_image(void)
+{
+    // anscii
+
+    // LAINUXOS
+    mvprintw(6,10, "LA");
+
 }
 
 void nc_cleanup(void) {
