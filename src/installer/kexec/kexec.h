@@ -7,4 +7,7 @@ typedef struct {
     const char *cmdline;
 } KexecConfig;
 
+static long kexec_file_load(int kernel_fd, int initrd_fd, const char *cmdline, unsigned long flags);
+int kexec_execute(KexecConfig *config);
+
 #endif // kexec

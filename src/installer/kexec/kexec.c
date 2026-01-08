@@ -27,7 +27,7 @@ static long kexec_file_load(int kernel_fd, int initrd_fd, const char *cmdline, u
 int kexec_execute(KexecConfig *config) {
     if (!config || !config->kernel_path) return -1;
 
-    printf("LainuxOS KEXEC: loading kernel %s...\n", config->kernel_path);
+    printf("[LainuxOS KEXEC]: loading kernel %s...\n", config->kernel_path);
 
     int kernel_fd = open(config->kernel_path, O_RDONLY);
     if (kernel_fd < 0) {
@@ -57,9 +57,9 @@ int kexec_execute(KexecConfig *config) {
     close(kernel_fd);
     if (initrd_fd >= 0) close(initrd_fd);
 
-    printf("LainuxOS KEXEC: Kernel Ready. Up...\n");
+    printf("[LainuxOS KEXEC]: Kernel Ready. Up...\n");
 
-    // down up cash from disk
+    // down up cash from diskё
     sync();
 
     // reload kernel
@@ -68,17 +68,6 @@ int kexec_execute(KexecConfig *config) {
         return -1;
     }
 
-    return 0;
-}
-
-
-int main() {
-    KexecConfig cfg = {
-        .kernel_path = "/mnt/boot/vmlinuz-linux",
-        .initrd_path = "/mnt/boot/initramfs-linux.img",
-        .cmdline = "root=/dev/sda2 rw quiet"
-    };
-    kexec_execute(&cfg);
     return 0;
 }
 

@@ -34,6 +34,7 @@ Installation Engine
 #include <fcntl.h>
 
 // ui, general function for UI
+#include "kexec/kexec.h"
 #include "ui/ui.h"
 #include "utils/log_message.h"
 // start command, system utils
@@ -532,8 +533,43 @@ void perform_installation(const char *disk) {
     secure_zero(efi_part, sizeof(efi_part));
     secure_zero(root_part, sizeof(root_part));
 
-    install_running = 0;
+     /* Services */
+    log_message("Try enabling services...");
+    snprintf(cmd, sizeof(cmd), "arch-chroot /mnt systemctl enable systemd-networkd systemd-resolved");
+    run_command(cmd, 0);
 
-    /* Show summary */
+    log_message("Preparing kexec transition...");
+
+    char cmdline[512];
+    snprintf(cmdline, sizeof(cmdline), "root=%s rw init=/usr/lib/systemd/systemd", root_part);
+    /* configuration for kexec func using struct */
+    KexecConfig k_cfg = {
+        .kernel_path = "/mnt/boot/vmlinuz-linux",
+        .initrd_path = "/mnt/boot/initramfs-linux.img",
+        .cmdline = cmdline,
+    };
+
+    /* Cleanup */
+    log_message("Cleaning up...");
+    run_command("sync", 0);
+
+    /* look final  */
     show_summary(disk);
+
+    if (confirm_action("Boot into the new system immediately (kexec)?", "YES")) {
+        log_message("[Kexec]: Jumping to new kernel...");
+
+        kexec_execute(&k_cfg);
+        log_message(" Kexec failed, proceeding with standard cleanup. :( ");
+    }
+
+    run_command("umount -R /mnt", 0);
+    log_message("Woow! Installation complete! :D ");
+
+    /* Secure cleanup */
+    secure_zero(dev_path, sizeof(dev_path));
+    secure_zero(efi_part, sizeof(efi_part));
+    secure_zero(root_part, sizeof(root_part));
+
+    install_running = 0;
 }
