@@ -32,11 +32,14 @@ Our core philosophy emphasizes:
 *   **Extensibility:** An inherently modular architecture designed for flexible expansion without introducing bloat.
 
 ## Key Features & Differentiators
+* **Professional-grade TUI Installer:** A fully interactive, keyboard-driven installer built with ncurses, offering disk selection, UEFI/BIOS detection, secure wipe, hardware summary, and virtual machine deployment—all without leaving the terminal.
+* **Zero Desktop Bloat:** No display manager, no background daemons, no telemetry. What you install is exactly what runs. Full system transparency—from init to userspace—is guaranteed by design.
+* **Reproducible Build System:** ISO generation, kernel compilation, and package bundling are fully scripted in POSIX-compliant Bash. Reproducible builds are enforced via checksum-verified sources and deterministic compiler flags (-ffunction-sections -fdata-sections -Wl,--gc-sections).
 *   **Arch Linux Core:** Benefits from the rolling release model, offering the latest software packages and a straightforward, well-documented base.
 *   **Custom-Built Linux Kernel:** Tailored specifically for Lainux, compiled with performance and security in mind. This includes fine-tuning kernel parameters, stripping unnecessary modules, and evaluating real-time (RT) or enhanced security patches where applicable.
 *   **Minimalist Init System:** Utilizes *[e.g., systemd with a heavily trimmed set of units, or a fast alternative like Runit/OpenRC if adopted]* for rapid boot times and negligible resource consumption.
 *   **Bare-Bones Graphical Environment (Optional):** Designed to integrate seamlessly with highly efficient tiling window managers (*e.g., i3wm, dwm, bspwm*) or to operate purely in a command-line interface.
-*   **Proprietary C Library/Utilities:** Development of custom, performance-critical system utilities and an API in C, providing direct and efficient interaction with hardware and OS resources.
+*   **Custom C Library/Utilities:** Development of custom, performance-critical system utilities and an API in C, providing direct and efficient interaction with hardware and OS resources.
 *   **Robust Bash Automation:** Comprehensive scripting for streamlined system provisioning, configuration management, and post-installation setup.
 *   **Targeted Optimization:** Leveraging low-level insights from Assembler to identify and optimize bottlenecks within critical system paths.
 
@@ -46,6 +49,7 @@ Lainux is designed for professionals and advanced users in fields such as:
 *   **System Analysis & Reverse Engineering:** Provides a pristine environment for exploit development, malware analysis, and security research.
 *   **High-Performance Computing (HPC):** Ideal for benchmarks and workloads demanding maximum hardware utilization.
 *   **Academic & Research Projects:** An invaluable tool for in-depth study of Linux internals and operating system design.
+
 
 ## Project Status & Roadmap
 Lainux is actively under development. Current development phases being driven by `wienton` include:
@@ -72,4 +76,4 @@ Lainux is distributed under the [GNU General Public License v3.0](https://www.gn
 ---
 
 ### About the Author
-**wienton** is a dedicated system programmer with a profound interest in operating system internals, low-level programming, and hardware-software interaction. Lainux represents a personal and professional endeavor to craft a Linux distribution that embodies precision, efficiency, and full trasparency from the ground up.
+    wienton is a systems programmer obsessed with understanding how computers really work—from bootloaders to syscalls. Lainux started as a personal experiment to strip Linux down to its essentials and rebuild it with intention, not convention. It remains a labor of curiosity, rigor, and a mild disdain for unnecessary abstractions.
