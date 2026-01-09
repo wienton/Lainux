@@ -4,80 +4,74 @@
 #define LINUX_REBOOT_CMD_KEXEC 0x45584543
 #endif
 
-#include <stdio.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/syscall.h>
-#include <linux/kexec.h>
-#include <sys/reboot.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <linux/kexec.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/reboot.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 #include "kexec.h"
 
+// TODO: test function in reall installer on qemu
 
 // interface by syscalls kexec file load
 // this is call parse kernel config
-static long kexec_file_load(int kernel_fd, int initrd_fd, const char *cmdline, unsigned long flags) {
-    return syscall(SYS_kexec_file_load, kernel_fd, initrd_fd,
-                   (unsigned long)strlen(cmdline), cmdline, flags);
+static long kexec_file_load(int kernel_fd, int initrd_fd, const char *cmdline,
+                            unsigned long flags) {
+  return syscall(SYS_kexec_file_load, kernel_fd, initrd_fd,
+                 (unsigned long)strlen(cmdline), cmdline, flags);
 }
 
 int kexec_execute(KexecConfig *config) {
-    if (!config || !config->kernel_path) return -1;
+  if (!config || !config->kernel_path)
+    return -1;
 
-    printf("[LainuxOS KEXEC]: loading kernel %s...\n", config->kernel_path);
+  printf("[LainuxOS KEXEC]: loading kernel %s...\n", config->kernel_path);
 
-    int kernel_fd = open(config->kernel_path, O_RDONLY);
-    if (kernel_fd < 0) {
-        perror("error open kernel");
-        return -1;
+  int kernel_fd = open(config->kernel_path, O_RDONLY);
+  if (kernel_fd < 0) {
+    perror("error open kernel");
+    return -1;
+  }
+
+  int initrd_fd = -1;
+  if (config->initrd_path) {
+    initrd_fd = open(config->initrd_path, O_RDONLY);
+    if (initrd_fd < 0) {
+      perror("error open initrd");
+      close(kernel_fd);
+      return -1;
     }
+  }
 
-    int initrd_fd = -1;
-    if (config->initrd_path) {
-        initrd_fd = open(config->initrd_path, O_RDONLY);
-        if (initrd_fd < 0) {
-            perror("error open initrd");
-            close(kernel_fd);
-            return -1;
-        }
-    }
-
-    // load kernel in memory
-    // flag 0 - default loading
-    if (kexec_file_load(kernel_fd, initrd_fd, config->cmdline, 0) != 0) {
-        fprintf(stderr, "kexec_file_load failed: %s\n", strerror(errno));
-        close(kernel_fd);
-        if (initrd_fd >= 0) close(initrd_fd);
-        return -1;
-    }
-
+  // load kernel in memory
+  // flag 0 - default loading
+  if (kexec_file_load(kernel_fd, initrd_fd, config->cmdline, 0) != 0) {
+    fprintf(stderr, "kexec_file_load failed: %s\n", strerror(errno));
     close(kernel_fd);
-    if (initrd_fd >= 0) close(initrd_fd);
+    if (initrd_fd >= 0)
+      close(initrd_fd);
+    return -1;
+  }
 
-    printf("[LainuxOS KEXEC]: Kernel Ready. Up...\n");
+  close(kernel_fd);
+  if (initrd_fd >= 0)
+    close(initrd_fd);
 
-    // down up cash from diskё
-    sync();
+  printf("[LainuxOS KEXEC]: Kernel Ready. Up...\n");
 
-    // reload kernel
-    if (reboot(LINUX_REBOOT_CMD_KEXEC) == -1) {
-        perror("reboot(KEXEC) failed");
-        return -1;
-    }
+  // down up cash from diskё
+  sync();
 
-    return 0;
+  // reload kernel
+  if (reboot(LINUX_REBOOT_CMD_KEXEC) == -1) {
+    perror("reboot(KEXEC) failed");
+    return -1;
+  }
+
+  return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
